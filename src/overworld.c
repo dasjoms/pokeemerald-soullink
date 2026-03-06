@@ -44,6 +44,7 @@
 #include "metatile_behavior.h"
 #include "mirage_tower.h"
 #include "money.h"
+#include "multiplayer/session.h"
 #include "new_game.h"
 #include "oras_dowse.h"
 #include "palette.h"
@@ -1830,6 +1831,7 @@ void CB2_Overworld(void)
     if (fading)
         SetVBlankCallback(NULL);
     OverworldBasic();
+    MpSession_TickOverworldPost();
     if (fading)
     {
         SetFieldVBlankCallback();
@@ -2634,6 +2636,8 @@ static void CreateLinkPlayerSprites(void)
 
 static void CB1_OverworldLink(void)
 {
+    MpSession_TickOverworldPre();
+
     if (gWirelessCommType == 0 || !IsRfuRecvQueueEmpty() || !IsSendingKeysToLink())
     {
         u8 selfId = gLocalLinkPlayerId;
