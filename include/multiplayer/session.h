@@ -38,6 +38,7 @@ enum MpRejectReason
 
 void MpSession_Init(void);
 void MpSession_Reset(void);
+void MpSession_StopAndShutdown(void);
 void MpSession_StartConnecting(u8 startIntentFlags);
 void MpSession_TickOverworldPre(void);
 void MpSession_TickOverworldPost(void);

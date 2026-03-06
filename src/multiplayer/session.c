@@ -241,6 +241,12 @@ void MpSession_Reset(void)
     MpPeer_ResetAll();
 }
 
+void MpSession_StopAndShutdown(void)
+{
+    MpSession_Reset();
+    MpTransport_Shutdown();
+}
+
 void MpSession_StartConnecting(u8 startIntentFlags)
 {
     AGB_ASSERT(startIntentFlags & MP_SESSION_START_INTENT_EXPLICIT);
