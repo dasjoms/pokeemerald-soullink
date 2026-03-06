@@ -45,7 +45,7 @@ void MultiplayerDispatch_Tick(struct MultiplayerSession *session)
         if (msg.header.payloadLen > payloadSize)
         {
             sDispatchRejectCount++;
-            MpSession_OnPeerMessageRejected(msg.header.senderId);
+            MpSession_OnPeerMessageRejected(msg.header.senderId, MP_REJECT_REASON_NONE);
             continue;
         }
 
@@ -56,6 +56,7 @@ void MultiplayerDispatch_Tick(struct MultiplayerSession *session)
 bool8 MpDispatch_HandleInbound(const struct MpMessage *msg)
 {
     MpDispatchHandler handler;
+    u8 localPlayerId;
 
     if (msg == NULL)
     {
@@ -66,35 +67,52 @@ bool8 MpDispatch_HandleInbound(const struct MpMessage *msg)
     if (msg->header.protocolVersion != MP_PROTOCOL_VERSION_1)
     {
         sDispatchRejectCount++;
-        MpSession_OnPeerMessageRejected(msg->header.senderId);
+        MpSession_OnPeerMessageRejected(msg->header.senderId, MP_REJECT_REASON_NONE);
+        return FALSE;
+    }
+
+    if (MpSession_GetState() != MP_STATE_ACTIVE)
+    {
+        sDispatchRejectCount++;
+        MpSession_OnPeerMessageRejected(msg->header.senderId, MP_REJECT_REASON_WRONG_SESSION_STATE);
         return FALSE;
     }
 
     if (msg->header.type >= MP_DISPATCH_MESSAGE_TYPE_COUNT)
     {
         sDispatchRejectCount++;
-        MpSession_OnPeerMessageRejected(msg->header.senderId);
+        MpSession_OnPeerMessageRejected(msg->header.senderId, MP_REJECT_REASON_NONE);
         return FALSE;
     }
 
     if (msg->header.payloadLen > MP_MESSAGE_PAYLOAD_MAX)
     {
         sDispatchRejectCount++;
-        MpSession_OnPeerMessageRejected(msg->header.senderId);
+        MpSession_OnPeerMessageRejected(msg->header.senderId, MP_REJECT_REASON_NONE);
         return FALSE;
     }
 
-    if (!MpSession_IsPeerIdValid(msg->header.senderId))
+    localPlayerId = MpSession_GetLocalPlayerId();
+    if (msg->header.senderId == localPlayerId && !MpSession_IsLoopbackEnabled())
     {
         sDispatchRejectCount++;
-        MpSession_OnPeerMessageRejected(msg->header.senderId);
+        MpSession_OnPeerMessageRejected(msg->header.senderId, MP_REJECT_REASON_INVALID_SENDER);
+        return FALSE;
+    }
+
+    if (!MpSession_IsPeerIdValid(msg->header.senderId)
+     || !MpSession_IsSenderInSessionRoster(msg->header.senderId)
+     || msg->header.senderId >= MpSession_GetConnectedPlayerCount())
+    {
+        sDispatchRejectCount++;
+        MpSession_OnPeerMessageRejected(msg->header.senderId, MP_REJECT_REASON_INVALID_SENDER);
         return FALSE;
     }
 
     if (!MpSession_IsIncomingSeqAcceptable(msg->header.senderId, msg->header.seq))
     {
         sDispatchRejectCount++;
-        MpSession_OnPeerMessageRejected(msg->header.senderId);
+        MpSession_OnPeerMessageRejected(msg->header.senderId, MP_REJECT_REASON_STALE_SEQ);
         return FALSE;
     }
 
@@ -105,7 +123,7 @@ bool8 MpDispatch_HandleInbound(const struct MpMessage *msg)
     if (!handler(msg))
     {
         sDispatchRejectCount++;
-        MpSession_OnPeerMessageRejected(msg->header.senderId);
+        MpSession_OnPeerMessageRejected(msg->header.senderId, MP_REJECT_REASON_NONE);
         return FALSE;
     }
 
