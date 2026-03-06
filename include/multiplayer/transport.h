@@ -3,9 +3,25 @@
 
 #include "global.h"
 
+enum MpTransportState
+{
+    MP_TRANSPORT_STATE_OFFLINE,
+    MP_TRANSPORT_STATE_CONNECTING,
+    MP_TRANSPORT_STATE_ONLINE,
+    MP_TRANSPORT_STATE_ERROR,
+};
+
+struct MpTransportStatus
+{
+    enum MpTransportState state;
+    u8 playerCount;
+    bool8 isConnected;
+};
+
 void MpTransport_Init(void);
 void MpTransport_Shutdown(void);
 bool8 MpTransport_IsConnected(void);
+struct MpTransportStatus MpTransport_PollStatus(void);
 bool32 MpTransport_SendDatagram(const void *data, u16 size);
 // Returns the number of bytes copied into `data` (0 if no datagram is available).
 // Copies at most `capacity` bytes from the next received datagram.

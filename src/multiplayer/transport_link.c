@@ -2,6 +2,42 @@
 #include "link.h"
 #include "multiplayer/transport.h"
 
+static enum MpTransportState MpTransport_GetState(void)
+{
+    if (HasLinkErrorOccurred() || EXTRACT_LINK_ERRORS(gLinkStatus) != 0)
+        return MP_TRANSPORT_STATE_ERROR;
+
+    if (gWirelessCommType != 0)
+    {
+        if (IsLinkConnectionEstablished() || GetLinkPlayerCount() > 1)
+            return MP_TRANSPORT_STATE_ONLINE;
+
+        if (gWirelessCommType == 2 || IsWirelessAdapterConnected())
+            return MP_TRANSPORT_STATE_CONNECTING;
+
+        return MP_TRANSPORT_STATE_OFFLINE;
+    }
+
+    if (IsLinkConnectionEstablished() && GetLinkPlayerCount() > 1)
+        return MP_TRANSPORT_STATE_ONLINE;
+
+    if (gLinkStatus != 0)
+        return MP_TRANSPORT_STATE_CONNECTING;
+
+    return MP_TRANSPORT_STATE_OFFLINE;
+}
+
+struct MpTransportStatus MpTransport_PollStatus(void)
+{
+    struct MpTransportStatus status;
+
+    status.playerCount = GetLinkPlayerCount();
+    status.state = MpTransport_GetState();
+    status.isConnected = (status.state == MP_TRANSPORT_STATE_ONLINE);
+
+    return status;
+}
+
 void MpTransport_Init(void)
 {
     OpenLink();
@@ -15,17 +51,16 @@ void MpTransport_Shutdown(void)
 
 bool8 MpTransport_IsConnected(void)
 {
-    if (HasLinkErrorOccurred())
-        return FALSE;
-
-    if (gWirelessCommType)
-        return GetLinkPlayerCount() > 1;
-
-    return IsLinkConnectionEstablished() && GetLinkPlayerCount() > 1;
+    return MpTransport_PollStatus().isConnected;
 }
 
 bool32 MpTransport_SendDatagram(const void *data, u16 size)
 {
+    enum MpTransportState state = MpTransport_PollStatus().state;
+
+    if (state != MP_TRANSPORT_STATE_ONLINE)
+        return FALSE;
+
     if (data == NULL || size == 0)
         return FALSE;
 
@@ -41,6 +76,9 @@ u16 MpTransport_PollReceive(void *data, u16 capacity)
     u16 recvSize;
     u8 status;
     u8 i;
+
+    if (MpTransport_PollStatus().state != MP_TRANSPORT_STATE_ONLINE)
+        return 0;
 
     if (data == NULL || capacity == 0)
         return 0;
@@ -96,13 +134,18 @@ bool8 MultiplayerTransportLink_IsHandshakeReady(void)
 
 bool8 MultiplayerTransportLink_IsDegraded(void)
 {
-    return HasLinkErrorOccurred();
+    return MpTransport_PollStatus().state == MP_TRANSPORT_STATE_ERROR;
 }
 
 bool8 MultiplayerTransportLink_TryRecover(void)
 {
-    if (MpTransport_IsConnected())
+    enum MpTransportState state = MpTransport_PollStatus().state;
+
+    if (state == MP_TRANSPORT_STATE_ONLINE)
         return TRUE;
+
+    if (state != MP_TRANSPORT_STATE_ERROR)
+        return FALSE;
 
     MpTransport_Shutdown();
     MpTransport_Init();
