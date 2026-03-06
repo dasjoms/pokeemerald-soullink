@@ -44,6 +44,7 @@
 #include "metatile_behavior.h"
 #include "mirage_tower.h"
 #include "money.h"
+#include "multiplayer/session.h"
 #include "new_game.h"
 #include "oras_dowse.h"
 #include "palette.h"
@@ -157,6 +158,8 @@ static void SpawnLinkPlayerObjectEvent(u8, s16, s16, u8);
 static void InitLinkPlayerObjectEventPos(struct ObjectEvent *, s16, s16);
 static u8 GetSpriteForLinkedPlayer(u8);
 static void RunTerminateLinkScript(void);
+static void Overworld_MaybeStartExplicitMpSession(void);
+static void Overworld_StopExplicitMpSession(void);
 static u32 GetLinkSendQueueLength(void);
 static void ZeroLinkPlayerObjectEvent(struct LinkPlayerObjectEvent *);
 static const u8 *TryInteractWithPlayer(struct CableClubPlayer *);
@@ -1830,6 +1833,8 @@ void CB2_Overworld(void)
     if (fading)
         SetVBlankCallback(NULL);
     OverworldBasic();
+    if (MpSession_AreOverworldTicksEnabled())
+        MpSession_TickOverworldPost();
     if (fading)
     {
         SetFieldVBlankCallback();
@@ -1877,6 +1882,7 @@ static bool8 RunFieldCallback(void)
 
 void CB2_NewGame(void)
 {
+    Overworld_StopExplicitMpSession();
     FieldClearVBlankHBlankCallbacks();
     StopMapMusic();
     ResetSafariZoneFlag_();
@@ -1906,6 +1912,7 @@ void CB2_WhiteOut(void)
 
     if (++gMain.state >= 120)
     {
+        Overworld_StopExplicitMpSession();
         FieldClearVBlankHBlankCallbacks();
         StopMapMusic();
         ResetSafariZoneFlag_();
@@ -1928,6 +1935,7 @@ void CB2_WhiteOut(void)
 
 void CB2_LoadMap(void)
 {
+    Overworld_StopExplicitMpSession();
     FieldClearVBlankHBlankCallbacks();
     ScriptContext_Init();
     UnlockPlayerFieldControls();
@@ -1972,6 +1980,7 @@ static void CB2_LoadMapOnReturnToFieldCableClub(void)
 {
     if (LoadMapInStepsLink(&gMain.state))
     {
+        Overworld_MaybeStartExplicitMpSession();
         SetFieldVBlankCallback();
         SetMainCallback1(CB1_OverworldLink);
         ResetAllMultiplayerState();
@@ -2011,6 +2020,7 @@ void CB2_ReturnToFieldFromMultiplayer(void)
 {
     FieldClearVBlankHBlankCallbacks();
     StopMapMusic();
+    Overworld_MaybeStartExplicitMpSession();
     SetMainCallback1(CB1_OverworldLink);
     ResetAllMultiplayerState();
 
@@ -2022,6 +2032,23 @@ void CB2_ReturnToFieldFromMultiplayer(void)
     ScriptContext_Init();
     UnlockPlayerFieldControls();
     CB2_ReturnToField();
+}
+
+static void Overworld_MaybeStartExplicitMpSession(void)
+{
+    if (MpSession_GetState() == MP_STATE_DISCONNECTED)
+        MpSession_Init();
+
+    if (MpSession_GetState() == MP_STATE_DISCONNECTED)
+        MpSession_StartConnecting(MP_SESSION_START_INTENT_EXPLICIT);
+
+    MpSession_EnableOverworldTicks();
+}
+
+static void Overworld_StopExplicitMpSession(void)
+{
+    MpSession_DisableOverworldTicks();
+    MpSession_StopAndShutdown();
 }
 
 void CB2_ReturnToFieldWithOpenMenu(void)
@@ -2063,6 +2090,7 @@ void CB2_ContinueSavedGame(void)
 {
     u8 trainerHillMapId;
 
+    Overworld_StopExplicitMpSession();
     FieldClearVBlankHBlankCallbacks();
     StopMapMusic();
     ResetSafariZoneFlag_();
@@ -2114,7 +2142,10 @@ void CB2_ContinueSavedGame(void)
 static void FieldClearVBlankHBlankCallbacks(void)
 {
     if (UsedPokemonCenterWarp() == TRUE)
+    {
+        MpSession_DisableOverworldTicks();
         CloseLink();
+    }
 
     if (gWirelessCommType != 0)
     {
@@ -2634,6 +2665,9 @@ static void CreateLinkPlayerSprites(void)
 
 static void CB1_OverworldLink(void)
 {
+    if (MpSession_AreOverworldTicksEnabled())
+        MpSession_TickOverworldPre();
+
     if (gWirelessCommType == 0 || !IsRfuRecvQueueEmpty() || !IsSendingKeysToLink())
     {
         u8 selfId = gLocalLinkPlayerId;

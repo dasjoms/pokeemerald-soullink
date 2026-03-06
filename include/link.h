@@ -268,6 +268,7 @@ u8 GetMultiplayerId(void);
 u8 BitmaskAllOtherLinkPlayers(void);
 bool8 SendBlock(u8 unused, const void *src, u16 size);
 u8 GetBlockReceivedStatus(void);
+u16 GetBlockReceivedSize(u8 who);
 void ResetBlockReceivedFlags(void);
 void ResetBlockReceivedFlag(u8 who);
 u8 GetLinkPlayerCount_2(void);

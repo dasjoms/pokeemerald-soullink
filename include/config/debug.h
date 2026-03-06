@@ -14,4 +14,7 @@
 // Pokémon Debug
 #define DEBUG_POKEMON_SPRITE_VISUALIZER DISABLED_ON_RELEASE // Enables a debug menu for Pokémon sprites and icons, accessed by pressing Select in the summary screen.
 
+// Title Screen Debug
+#define DEBUG_TITLE_LINK_STATUS         DISABLED_ON_RELEASE // Shows a compact LINK status line on the title screen.
+
 #endif // GUARD_CONFIG_DEBUG_H
