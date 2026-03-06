@@ -37,6 +37,7 @@ static struct MpMetrics sMetrics;
 static u32 sStateEnterFrame;
 static u32 sRecoveryLastAttemptFrame;
 static u32 sRecoveryConfirmStartFrame;
+static bool8 sOverworldTicksEnabled;
 
 static void MpPeer_ResetAll(void);
 static void MpPeer_MarkSeen(u8 peerId, u16 seq, u32 nowFrame);
@@ -221,6 +222,7 @@ void MpSession_Init(void)
     sStateEnterFrame = gMain.vblankCounter2;
     sRecoveryLastAttemptFrame = 0;
     sRecoveryConfirmStartFrame = 0;
+    sOverworldTicksEnabled = FALSE;
     MpPeer_ResetAll();
 
     MultiplayerSession_Init(&sSession);
@@ -235,6 +237,7 @@ void MpSession_Reset(void)
     sStateEnterFrame = gMain.vblankCounter2;
     sRecoveryLastAttemptFrame = 0;
     sRecoveryConfirmStartFrame = 0;
+    sOverworldTicksEnabled = FALSE;
     MpPeer_ResetAll();
 }
 
@@ -250,11 +253,12 @@ void MpSession_StartConnecting(u8 startIntentFlags)
     sStateEnterFrame = gMain.vblankCounter2;
     sRecoveryLastAttemptFrame = 0;
     sRecoveryConfirmStartFrame = 0;
+    sOverworldTicksEnabled = FALSE;
 }
 
 void MpSession_TickOverworldPre(void)
 {
-    if (sSessionState == MP_STATE_DISCONNECTED)
+    if (!sOverworldTicksEnabled || sSessionState == MP_STATE_DISCONNECTED)
         return;
 
     MultiplayerSession_Tick(&sSession);
@@ -274,6 +278,9 @@ void MpSession_TickOverworldPost(void)
     u8 i;
     u32 nowFrame = gMain.vblankCounter2;
 
+    if (!sOverworldTicksEnabled)
+        return;
+
     for (i = 0; i < MP_MAX_PEERS; i++)
     {
         if (MpPeer_IsTimedOut(i, nowFrame))
@@ -282,6 +289,22 @@ void MpSession_TickOverworldPost(void)
             MpPeer_MarkDisconnected(i);
         }
     }
+}
+
+
+void MpSession_EnableOverworldTicks(void)
+{
+    sOverworldTicksEnabled = TRUE;
+}
+
+void MpSession_DisableOverworldTicks(void)
+{
+    sOverworldTicksEnabled = FALSE;
+}
+
+bool8 MpSession_AreOverworldTicksEnabled(void)
+{
+    return sOverworldTicksEnabled;
 }
 
 enum MpSessionState MpSession_GetState(void)
