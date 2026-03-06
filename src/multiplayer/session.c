@@ -16,20 +16,17 @@
 static struct MultiplayerSession sSession;
 static enum MpSessionState sSessionState;
 static struct MpPeerState sPeerCache[MP_MAX_PEERS];
-static struct MpMessage sMessageQueue[MULTIPLAYER_QUEUE_CAPACITY];
+static struct MultiplayerQueue sOutgoingQueue;
+static struct MpMessage sOutgoingMessages[MULTIPLAYER_QUEUE_PRIORITY_COUNT][MULTIPLAYER_QUEUE_CAPACITY];
 struct MpMetrics
 {
     u32 stateTransitions;
     u32 recvDatagrams;
     u32 droppedDatagrams;
-    u32 queueOverflowsByPriority[MULTIPLAYER_QUEUE_PRIORITY_COUNT];
     u32 peerTimeoutCount;
 };
 
 static struct MpMetrics sMetrics;
-static u8 sMessageQueueHead;
-static u8 sMessageQueueTail;
-static u8 sMessageQueueCount;
 static u32 sStateEnterFrame;
 
 static void MpPeer_ResetAll(void);
@@ -173,15 +170,15 @@ static void MpSession_ScheduleHeartbeat(void)
 
 static void MpSession_DrainSendQueue(void)
 {
-    while (sMessageQueueCount != 0)
+    struct MultiplayerPacket nextPacket;
+
+    while (MultiplayerQueue_PopNext(&sOutgoingQueue, &nextPacket))
     {
-        struct MpMessage *nextMsg = &sMessageQueue[sMessageQueueHead];
-
-        if (!MultiplayerTransportLink_Send(nextMsg, sizeof(*nextMsg)))
+        if (!MultiplayerTransportLink_Send(nextPacket.data, nextPacket.size))
+        {
+            MultiplayerQueue_Push(&sOutgoingQueue, &nextPacket, ((const struct MpMessage *)nextPacket.data)->header.priority);
             break;
-
-        sMessageQueueHead = (sMessageQueueHead + 1) % MULTIPLAYER_QUEUE_CAPACITY;
-        sMessageQueueCount--;
+        }
     }
 }
 
@@ -189,9 +186,7 @@ void MpSession_Init(void)
 {
     CpuFill32(0, &sMetrics, sizeof(sMetrics));
     sSessionState = MP_STATE_DISCONNECTED;
-    sMessageQueueHead = 0;
-    sMessageQueueTail = 0;
-    sMessageQueueCount = 0;
+    MultiplayerQueue_Reset(&sOutgoingQueue);
     sStateEnterFrame = gMain.vblankCounter2;
     MpPeer_ResetAll();
 
@@ -203,9 +198,7 @@ void MpSession_Reset(void)
     MultiplayerSession_Stop(&sSession);
     CpuFill32(0, &sMetrics, sizeof(sMetrics));
     sSessionState = MP_STATE_DISCONNECTED;
-    sMessageQueueHead = 0;
-    sMessageQueueTail = 0;
-    sMessageQueueCount = 0;
+    MultiplayerQueue_Reset(&sOutgoingQueue);
     sStateEnterFrame = gMain.vblankCounter2;
     MpPeer_ResetAll();
 }
@@ -214,9 +207,7 @@ void MpSession_StartConnecting(u8 startIntentFlags)
 {
     AGB_ASSERT(startIntentFlags & MP_SESSION_START_INTENT_EXPLICIT);
 
-    sMessageQueueHead = 0;
-    sMessageQueueTail = 0;
-    sMessageQueueCount = 0;
+    MultiplayerQueue_Reset(&sOutgoingQueue);
 
     MultiplayerSession_Start(&sSession);
     MpSession_SetState(MP_STATE_CONNECTING);
@@ -268,23 +259,20 @@ bool8 MpSession_IsActive(void)
 bool8 MpSession_EnqueueMessage(const struct MpMessage *msg)
 {
     u8 priority;
+    u16 writeIndex;
+    struct MultiplayerPacket packet;
 
     if (msg == NULL)
         return FALSE;
 
     priority = MpSession_NormalizePriority(msg->header.priority);
+    writeIndex = sOutgoingQueue.rings[priority].tail;
+    sOutgoingMessages[priority][writeIndex] = *msg;
 
-    if (sMessageQueueCount >= MULTIPLAYER_QUEUE_CAPACITY)
-    {
-        sMetrics.queueOverflowsByPriority[priority]++;
-        return FALSE;
-    }
+    packet.data = &sOutgoingMessages[priority][writeIndex];
+    packet.size = sizeof(*msg);
 
-    sMessageQueue[sMessageQueueTail] = *msg;
-    sMessageQueueTail = (sMessageQueueTail + 1) % MULTIPLAYER_QUEUE_CAPACITY;
-    sMessageQueueCount++;
-
-    return TRUE;
+    return MultiplayerQueue_Push(&sOutgoingQueue, &packet, priority);
 }
 
 bool8 MpSession_IsPeerIdValid(u8 peerId)
@@ -334,7 +322,7 @@ void MpSession_GetMetricsSnapshot(struct MpMetricsSnapshot *snapshot)
     snapshot->recvDatagrams = sMetrics.recvDatagrams;
     snapshot->droppedDatagrams = sMetrics.droppedDatagrams;
     for (priority = 0; priority < MULTIPLAYER_QUEUE_PRIORITY_COUNT; priority++)
-        snapshot->queueOverflowsByPriority[priority] = sMetrics.queueOverflowsByPriority[priority];
+        snapshot->queueOverflowsByPriority[priority] = MultiplayerQueue_GetOverflowCountByPriority(&sOutgoingQueue, priority);
     snapshot->handlerRejectCount = MpDispatch_GetRejectCount();
     snapshot->peerTimeoutCount = sMetrics.peerTimeoutCount;
 }
