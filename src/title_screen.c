@@ -19,12 +19,14 @@
 #include "sound.h"
 #include "sprite.h"
 #include "task.h"
+#include "text.h"
 #include "scanline_effect.h"
 #include "gpu_regs.h"
 #include "trig.h"
 #include "graphics.h"
 #include "constants/rgb.h"
 #include "constants/songs.h"
+#include "constants/characters.h"
 #include "config/debug.h"
 
 enum {
@@ -64,9 +66,9 @@ static const struct WindowTemplate sLinkStatusWindowTemplate =
     .baseBlock = 1,
 };
 
-static EWRAM_DATA u8 sLinkStatusWindowId = WINDOW_NONE;
+static EWRAM_DATA u8 sLinkStatusWindowId;
 static EWRAM_DATA u8 sLinkStatusRefreshTimer = 0;
-static EWRAM_DATA u8 sLinkStatusLastStatus = 0xFF;
+static EWRAM_DATA u8 sLinkStatusLastStatus;
 static EWRAM_DATA bool8 sTitleLinkProbeEnabled = FALSE;
 
 static const u8 sText_LinkStatusOff[] = _("LINK: OFF");
@@ -75,7 +77,7 @@ static const u8 sText_LinkStatusOn[] = _("LINK: ON");
 static const u8 sText_LinkStatusErr[] = _("LINK: ERR");
 static const u8 sText_LinkProbeOff[] = _("PROBE: OFF");
 static const u8 sText_LinkProbeOn[] = _("PROBE: ON");
-static EWRAM_DATA u8 sLinkStatusTextBuffer[sizeof("LINK: ERR 00")] = _("LINK: ERR");
+static EWRAM_DATA u8 sLinkStatusTextBuffer[sizeof("LINK: ERR 00")];
 
 enum TitleLinkStatus
 {
