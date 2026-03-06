@@ -1832,7 +1832,8 @@ void CB2_Overworld(void)
     if (fading)
         SetVBlankCallback(NULL);
     OverworldBasic();
-    MpSession_TickOverworldPost();
+    if (MpSession_AreOverworldTicksEnabled())
+        MpSession_TickOverworldPost();
     if (fading)
     {
         SetFieldVBlankCallback();
@@ -1880,6 +1881,7 @@ static bool8 RunFieldCallback(void)
 
 void CB2_NewGame(void)
 {
+    MpSession_DisableOverworldTicks();
     FieldClearVBlankHBlankCallbacks();
     StopMapMusic();
     ResetSafariZoneFlag_();
@@ -1909,6 +1911,7 @@ void CB2_WhiteOut(void)
 
     if (++gMain.state >= 120)
     {
+        MpSession_DisableOverworldTicks();
         FieldClearVBlankHBlankCallbacks();
         StopMapMusic();
         ResetSafariZoneFlag_();
@@ -1931,6 +1934,7 @@ void CB2_WhiteOut(void)
 
 void CB2_LoadMap(void)
 {
+    MpSession_DisableOverworldTicks();
     FieldClearVBlankHBlankCallbacks();
     ScriptContext_Init();
     UnlockPlayerFieldControls();
@@ -2036,6 +2040,8 @@ static void Overworld_MaybeStartExplicitMpSession(void)
 
     if (MpSession_GetState() == MP_STATE_DISCONNECTED)
         MpSession_StartConnecting(MP_SESSION_START_INTENT_EXPLICIT);
+
+    MpSession_EnableOverworldTicks();
 }
 
 void CB2_ReturnToFieldWithOpenMenu(void)
@@ -2077,6 +2083,7 @@ void CB2_ContinueSavedGame(void)
 {
     u8 trainerHillMapId;
 
+    MpSession_DisableOverworldTicks();
     FieldClearVBlankHBlankCallbacks();
     StopMapMusic();
     ResetSafariZoneFlag_();
@@ -2128,7 +2135,10 @@ void CB2_ContinueSavedGame(void)
 static void FieldClearVBlankHBlankCallbacks(void)
 {
     if (UsedPokemonCenterWarp() == TRUE)
+    {
+        MpSession_DisableOverworldTicks();
         CloseLink();
+    }
 
     if (gWirelessCommType != 0)
     {
@@ -2648,7 +2658,8 @@ static void CreateLinkPlayerSprites(void)
 
 static void CB1_OverworldLink(void)
 {
-    MpSession_TickOverworldPre();
+    if (MpSession_AreOverworldTicksEnabled())
+        MpSession_TickOverworldPre();
 
     if (gWirelessCommType == 0 || !IsRfuRecvQueueEmpty() || !IsSendingKeysToLink())
     {
