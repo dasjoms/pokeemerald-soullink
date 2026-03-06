@@ -10,16 +10,12 @@
 #include "m4a.h"
 #include "main.h"
 #include "main_menu.h"
-#include "window.h"
-#include "link.h"
-#include "string_util.h"
 #include "palette.h"
 #include "reset_rtc_screen.h"
 #include "berry_fix_program.h"
 #include "sound.h"
 #include "sprite.h"
 #include "task.h"
-#include "text.h"
 #include "scanline_effect.h"
 #include "gpu_regs.h"
 #include "trig.h"
@@ -27,7 +23,6 @@
 #include "constants/rgb.h"
 #include "constants/songs.h"
 #include "constants/characters.h"
-#include "config/debug.h"
 
 enum {
     TAG_VERSION = 1000,
@@ -47,57 +42,6 @@ enum {
 #define BERRY_UPDATE_BUTTON_COMBO (B_BUTTON | SELECT_BUTTON)
 #define A_B_START_SELECT (A_BUTTON | B_BUTTON | START_BUTTON | SELECT_BUTTON)
 
-#if DEBUG_TITLE_LINK_STATUS
-#define LINK_STATUS_WINDOW_BG      0
-#define LINK_STATUS_WINDOW_X       1
-#define LINK_STATUS_WINDOW_Y       1
-#define LINK_STATUS_WINDOW_WIDTH   10
-#define LINK_STATUS_WINDOW_HEIGHT  2
-#define LINK_STATUS_REFRESH_FRAMES 8
-
-static const struct WindowTemplate sLinkStatusWindowTemplate =
-{
-    .bg = LINK_STATUS_WINDOW_BG,
-    .tilemapLeft = LINK_STATUS_WINDOW_X,
-    .tilemapTop = LINK_STATUS_WINDOW_Y,
-    .width = LINK_STATUS_WINDOW_WIDTH,
-    .height = LINK_STATUS_WINDOW_HEIGHT,
-    .paletteNum = 15,
-    .baseBlock = 1,
-};
-
-static EWRAM_DATA u8 sLinkStatusWindowId;
-static EWRAM_DATA u8 sLinkStatusRefreshTimer = 0;
-static EWRAM_DATA u8 sLinkStatusLastStatus;
-static EWRAM_DATA bool8 sTitleLinkProbeEnabled = FALSE;
-
-static const u8 sText_LinkStatusOff[] = _("LINK: OFF");
-static const u8 sText_LinkStatusWait[] = _("LINK: WAIT");
-static const u8 sText_LinkStatusOn[] = _("LINK: ON");
-static const u8 sText_LinkStatusErr[] = _("LINK: ERR");
-static const u8 sText_LinkProbeOff[] = _("PROBE: OFF");
-static const u8 sText_LinkProbeOn[] = _("PROBE: ON");
-static EWRAM_DATA u8 sLinkStatusTextBuffer[sizeof("LINK: ERR 00")];
-
-enum TitleLinkStatus
-{
-    TITLE_LINK_STATUS_OFF,
-    TITLE_LINK_STATUS_WAIT,
-    TITLE_LINK_STATUS_ON,
-    TITLE_LINK_STATUS_ERR,
-};
-
-static void InitTitleLinkStatusWindow(void);
-static void UpdateTitleLinkStatus(void);
-static void RemoveTitleLinkStatusWindow(void);
-static void ToggleTitleLinkProbe(void);
-static void DisableTitleLinkProbe(void);
-static enum TitleLinkStatus GetTitleLinkStatusTelemetry(void);
-static const u8 *GetTitleLinkStatusText(enum TitleLinkStatus status);
-static const u8 *GetTitleLinkProbeText(void);
-static bool8 IsTitleLinkStatusIncompatible(u8 playerCount, bool8 isEstablished);
-static u8 GetTitleLinkErrorCode(void);
-#endif
 
 static void MainCB2(void);
 static void Task_TitleScreenPhase1(u8);
@@ -608,163 +552,6 @@ static void StartPokemonLogoShine(u8 mode)
 #undef sMode
 #undef sBgColor
 
-#if DEBUG_TITLE_LINK_STATUS
-static void InitTitleLinkStatusWindow(void)
-{
-    if (sLinkStatusWindowId != WINDOW_NONE)
-        return;
-
-    sLinkStatusWindowId = AddWindow(&sLinkStatusWindowTemplate);
-    if (sLinkStatusWindowId == WINDOW_NONE)
-        return;
-
-    FillWindowPixelBuffer(sLinkStatusWindowId, PIXEL_FILL(1));
-    PutWindowTilemap(sLinkStatusWindowId);
-    CopyWindowToVram(sLinkStatusWindowId, COPYWIN_FULL);
-    sLinkStatusRefreshTimer = 0;
-    sLinkStatusLastStatus = 0xFF;
-}
-
-static void UpdateTitleLinkStatus(void)
-{
-    enum TitleLinkStatus status;
-    const u8 *text;
-
-    if (sLinkStatusWindowId == WINDOW_NONE)
-        return;
-
-    if (++sLinkStatusRefreshTimer < LINK_STATUS_REFRESH_FRAMES)
-        return;
-
-    sLinkStatusRefreshTimer = 0;
-    status = GetTitleLinkStatusTelemetry();
-    if (status == sLinkStatusLastStatus)
-        return;
-
-    sLinkStatusLastStatus = status;
-    text = GetTitleLinkStatusText(status);
-
-    FillWindowPixelBuffer(sLinkStatusWindowId, PIXEL_FILL(1));
-    AddTextPrinterParameterized(sLinkStatusWindowId, FONT_SMALL, text, 0, 0, TEXT_SKIP_DRAW, NULL);
-    AddTextPrinterParameterized(sLinkStatusWindowId, FONT_SMALL, GetTitleLinkProbeText(), 0, 9, TEXT_SKIP_DRAW, NULL);
-    CopyWindowToVram(sLinkStatusWindowId, COPYWIN_GFX);
-}
-
-static void ToggleTitleLinkProbe(void)
-{
-    if (sTitleLinkProbeEnabled)
-        DisableTitleLinkProbe();
-    else
-    {
-        // Transport probe only: keep this at the raw link layer so the title
-        // screen can verify emulator connectivity without starting a
-        // multiplayer session. Do not call MpSession_StartConnecting(...) or
-        // MpSession_EnableOverworldTicks() from title-screen probe paths.
-        OpenLink();
-        sTitleLinkProbeEnabled = TRUE;
-    }
-
-    sLinkStatusRefreshTimer = LINK_STATUS_REFRESH_FRAMES;
-    sLinkStatusLastStatus = 0xFF;
-}
-
-static void DisableTitleLinkProbe(void)
-{
-    if (!sTitleLinkProbeEnabled)
-        return;
-
-    CloseLink();
-    sTitleLinkProbeEnabled = FALSE;
-    sLinkStatusRefreshTimer = LINK_STATUS_REFRESH_FRAMES;
-    sLinkStatusLastStatus = 0xFF;
-}
-
-static enum TitleLinkStatus GetTitleLinkStatusTelemetry(void)
-{
-    u8 playerCount = GetLinkPlayerCount();
-    bool8 isEstablished = IsLinkConnectionEstablished();
-    bool8 hasActiveLinkContext;
-
-    // This telemetry is intentionally transport-only. It reflects whether the
-    // emulator link cable path is usable; session ownership/lifecycle remains
-    // in overworld + link transition flows.
-
-    if (HasLinkErrorOccurred() || IsTitleLinkStatusIncompatible(playerCount, isEstablished))
-        return TITLE_LINK_STATUS_ERR;
-
-    hasActiveLinkContext = (gReceivedRemoteLinkPlayers || gWirelessCommType != 0 || isEstablished || playerCount > 1);
-    if (!hasActiveLinkContext)
-        return TITLE_LINK_STATUS_OFF;
-
-    if (isEstablished && playerCount > 1)
-        return TITLE_LINK_STATUS_ON;
-
-    return TITLE_LINK_STATUS_WAIT;
-}
-
-static const u8 *GetTitleLinkStatusText(enum TitleLinkStatus status)
-{
-    u8 *dst;
-
-    switch (status)
-    {
-    case TITLE_LINK_STATUS_ERR:
-        StringCopy(sLinkStatusTextBuffer, sText_LinkStatusErr);
-        dst = sLinkStatusTextBuffer + StringLength(sLinkStatusTextBuffer);
-        *dst++ = CHAR_SPACE;
-        ConvertIntToHexStringN(dst, GetTitleLinkErrorCode(), STR_CONV_MODE_LEADING_ZEROS, 2);
-        return sLinkStatusTextBuffer;
-    case TITLE_LINK_STATUS_ON:
-        return sText_LinkStatusOn;
-    case TITLE_LINK_STATUS_WAIT:
-        return sText_LinkStatusWait;
-    case TITLE_LINK_STATUS_OFF:
-    default:
-        return sText_LinkStatusOff;
-    }
-}
-
-static bool8 IsTitleLinkStatusIncompatible(u8 playerCount, bool8 isEstablished)
-{
-    if (EXTRACT_LINK_ERRORS(gLinkStatus) != 0)
-        return TRUE;
-
-    if (isEstablished && playerCount <= 1)
-        return TRUE;
-
-    return FALSE;
-}
-
-static u8 GetTitleLinkErrorCode(void)
-{
-    u8 transportErrorCode = EXTRACT_LINK_ERRORS(gLinkStatus);
-
-    if (transportErrorCode != 0)
-        return transportErrorCode;
-
-    return (EXTRACT_CONN_ESTABLISHED(gLinkStatus) << 3) | EXTRACT_PLAYER_COUNT(gLinkStatus);
-}
-
-static const u8 *GetTitleLinkProbeText(void)
-{
-    if (sTitleLinkProbeEnabled)
-        return sText_LinkProbeOn;
-
-    return sText_LinkProbeOff;
-}
-
-static void RemoveTitleLinkStatusWindow(void)
-{
-    if (sLinkStatusWindowId == WINDOW_NONE)
-        return;
-
-    ClearWindowTilemap(sLinkStatusWindowId);
-    RemoveWindow(sLinkStatusWindowId);
-    sLinkStatusWindowId = WINDOW_NONE;
-    sLinkStatusLastStatus = 0xFF;
-}
-#endif
-
 static void VBlankCB(void)
 {
     ScanlineEffect_InitHBlankDmaTransfer();
@@ -804,12 +591,6 @@ void CB2_InitTitleScreen(void)
         DmaFill32(3, 0, (void *)OAM, OAM_SIZE);
         DmaFill16(3, 0, (void *)(PLTT + 2), PLTT_SIZE - 2);
         ResetPaletteFade();
-#if DEBUG_TITLE_LINK_STATUS
-        sLinkStatusWindowId = WINDOW_NONE;
-        sLinkStatusRefreshTimer = 0;
-        sLinkStatusLastStatus = 0xFF;
-        sTitleLinkProbeEnabled = FALSE;
-#endif
         gMain.state = 1;
         break;
     case 1:
@@ -843,9 +624,6 @@ void CB2_InitTitleScreen(void)
         gTasks[taskId].tSkipToNext = FALSE;
         gTasks[taskId].tPointless = -16;
         gTasks[taskId].tBg2Y = -32;
-#if DEBUG_TITLE_LINK_STATUS
-        InitTitleLinkStatusWindow();
-#endif
         gMain.state = 3;
         break;
     }
@@ -899,9 +677,6 @@ static void MainCB2(void)
     AnimateSprites();
     BuildOamBuffer();
     UpdatePaletteFade();
-#if DEBUG_TITLE_LINK_STATUS
-    UpdateTitleLinkStatus();
-#endif
 }
 
 // Shine the Pokémon logo two more times, and fade in the version banner
@@ -1003,13 +778,6 @@ static void Task_TitleScreenPhase2(u8 taskId)
 // Show Rayquaza silhouette and process main title screen input
 static void Task_TitleScreenPhase3(u8 taskId)
 {
-#if DEBUG_TITLE_LINK_STATUS
-    if (JOY_NEW(SELECT_BUTTON))
-    {
-        ToggleTitleLinkProbe();
-    }
-    else
-#endif
     if (JOY_NEW(A_BUTTON) || JOY_NEW(START_BUTTON))
     {
         FadeOutBGM(4);
@@ -1054,50 +822,30 @@ static void Task_TitleScreenPhase3(u8 taskId)
 
 static void CB2_GoToMainMenu(void)
 {
-#if DEBUG_TITLE_LINK_STATUS
-    DisableTitleLinkProbe();
-    RemoveTitleLinkStatusWindow();
-#endif
     if (!UpdatePaletteFade())
         SetMainCallback2(CB2_InitMainMenu);
 }
 
 static void CB2_GoToCopyrightScreen(void)
 {
-#if DEBUG_TITLE_LINK_STATUS
-    DisableTitleLinkProbe();
-    RemoveTitleLinkStatusWindow();
-#endif
     if (!UpdatePaletteFade())
         SetMainCallback2(CB2_InitCopyrightScreenAfterTitleScreen);
 }
 
 static void CB2_GoToClearSaveDataScreen(void)
 {
-#if DEBUG_TITLE_LINK_STATUS
-    DisableTitleLinkProbe();
-    RemoveTitleLinkStatusWindow();
-#endif
     if (!UpdatePaletteFade())
         SetMainCallback2(CB2_InitClearSaveDataScreen);
 }
 
 static void CB2_GoToResetRtcScreen(void)
 {
-#if DEBUG_TITLE_LINK_STATUS
-    DisableTitleLinkProbe();
-    RemoveTitleLinkStatusWindow();
-#endif
     if (!UpdatePaletteFade())
         SetMainCallback2(CB2_InitResetRtcScreen);
 }
 
 static void CB2_GoToBerryFixScreen(void)
 {
-#if DEBUG_TITLE_LINK_STATUS
-    DisableTitleLinkProbe();
-    RemoveTitleLinkStatusWindow();
-#endif
     if (!UpdatePaletteFade())
     {
         m4aMPlayAllStop();
