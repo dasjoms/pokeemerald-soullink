@@ -189,6 +189,24 @@ bool8 MpSession_EnqueueMessage(const struct MpMessage *msg)
     return TRUE;
 }
 
+bool8 MpSession_IsPeerIdValid(u8 peerId)
+{
+    return (peerId < MP_MAX_PEERS);
+}
+
+void MpSession_OnPeerMessageAccepted(u8 peerId, u16 seq)
+{
+    MpPeer_MarkSeen(peerId, seq, gMain.vblankCounter2);
+}
+
+void MpSession_OnPeerMessageRejected(u8 peerId)
+{
+    if (!MpSession_IsPeerIdValid(peerId))
+        return;
+
+    sPeerCache[peerId].statusBits |= MP_PEER_STATUS_DISCONNECTED;
+}
+
 u8 MpSession_GetPeerCacheKnownCount(void)
 {
     return MP_MAX_PEERS;
