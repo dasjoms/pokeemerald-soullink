@@ -243,6 +243,7 @@ void MpSession_Reset(void)
 
 void MpSession_StopAndShutdown(void)
 {
+    MpSession_DisableOverworldTicks();
     MpSession_Reset();
     MpTransport_Shutdown();
 }
