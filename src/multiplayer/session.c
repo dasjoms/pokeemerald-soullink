@@ -18,8 +18,8 @@
 static struct MultiplayerSession sSession;
 static enum MpSessionState sSessionState;
 static struct MpPeerState sPeerCache[MP_MAX_PEERS];
-static struct MultiplayerQueue sOutgoingQueue;
-static struct MpMessage sOutgoingMessages[MULTIPLAYER_QUEUE_PRIORITY_COUNT][MULTIPLAYER_QUEUE_CAPACITY];
+static EWRAM_DATA struct MultiplayerQueue sOutgoingQueue;
+static EWRAM_DATA struct MpMessage sOutgoingMessages[MULTIPLAYER_QUEUE_PRIORITY_COUNT][MULTIPLAYER_QUEUE_CAPACITY];
 struct MpMetrics
 {
     u32 stateTransitions;
