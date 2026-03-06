@@ -18,3 +18,23 @@ u16 MultiplayerTransportLink_Recv(void *data, u16 capacity)
     (void)capacity;
     return 0;
 }
+
+bool8 MultiplayerTransportLink_IsConnected(void)
+{
+    return FALSE;
+}
+
+bool8 MultiplayerTransportLink_IsHandshakeReady(void)
+{
+    return FALSE;
+}
+
+bool8 MultiplayerTransportLink_IsDegraded(void)
+{
+    return FALSE;
+}
+
+bool8 MultiplayerTransportLink_TryRecover(void)
+{
+    return FALSE;
+}
