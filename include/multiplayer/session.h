@@ -28,6 +28,13 @@ struct MpMetricsSnapshot
     bool8 recoveryErrorFlag;
 };
 
+struct MpSessionUiSnapshot
+{
+    bool8 isInitialized;
+    enum MpSessionState state;
+    u8 playerCount;
+};
+
 enum MpRejectReason
 {
     MP_REJECT_REASON_NONE,
@@ -62,6 +69,7 @@ void MpSession_GetMetricsSnapshot(struct MpMetricsSnapshot *snapshot);
 u8 MpSession_GetPeerCacheKnownCount(void);
 u8 MpSession_GetPeerCacheActiveCount(void);
 u8 MpSession_GetPeerHealth(u8 playerId);
+void MpSession_GetUiSnapshot(struct MpSessionUiSnapshot *snapshot);
 
 void MultiplayerSession_Init(struct MultiplayerSession *session);
 void MultiplayerSession_Start(struct MultiplayerSession *session);

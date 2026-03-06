@@ -466,6 +466,20 @@ u8 MpSession_GetPeerHealth(u8 playerId)
     return sPeerCache[playerId].statusBits;
 }
 
+
+void MpSession_GetUiSnapshot(struct MpSessionUiSnapshot *snapshot)
+{
+    if (snapshot == NULL)
+        return;
+
+    snapshot->isInitialized = (sSessionState != MP_STATE_DISCONNECTED || sSession.active);
+    snapshot->state = sSessionState;
+    snapshot->playerCount = sSession.playerCount;
+
+    if (!snapshot->isInitialized)
+        snapshot->playerCount = 0;
+}
+
 void MultiplayerSession_Init(struct MultiplayerSession *session)
 {
     session->active = FALSE;
