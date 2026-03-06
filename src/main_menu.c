@@ -278,8 +278,9 @@ static const u8 gText_ContinueMenuTime[] = _("TIME");
 static const u8 gText_ContinueMenuPokedex[] = _("POKéDEX");
 static const u8 gText_ContinueMenuBadges[] = _("BADGES");
 static const u8 gText_ContinueMenuMultiplayer[] = _("LINK");
-static const u8 gText_ContinueMenuMultiplayerOff[] = _("OFF");
-static const u8 gText_ContinueMenuMultiplayerOn[] = _("ON");
+static const u8 gText_ContinueMenuMultiplayerOffline[] = _("OFFLINE");
+static const u8 gText_ContinueMenuMultiplayerConnecting[] = _("CONNECTING");
+static const u8 gText_ContinueMenuMultiplayerOnline[] = _("ONLINE");
 
 #define MENU_LEFT 2
 #define MENU_TOP_WIN0 1
@@ -2240,14 +2241,24 @@ static void MainMenu_FormatMultiplayerInfo(void)
 static void MainMenu_FormatMultiplayerInfoWindow(u8 windowId, u8 x, u8 y, u8 rightAlignX)
 {
     const u8 *status;
+    struct MpSessionUiSnapshot snapshot;
 
     StringExpandPlaceholders(gStringVar4, gText_ContinueMenuMultiplayer);
     AddTextPrinterParameterized3(windowId, FONT_NORMAL, x, y, sTextColor_MenuInfo, TEXT_SKIP_DRAW, gStringVar4);
 
-    if (MpSession_IsActive())
-        status = gText_ContinueMenuMultiplayerOn;
+    MpSession_GetUiSnapshot(&snapshot);
+    if (!snapshot.isInitialized || snapshot.state == MP_STATE_DISCONNECTED)
+    {
+        status = gText_ContinueMenuMultiplayerOffline;
+    }
+    else if (snapshot.state == MP_STATE_CONNECTING || snapshot.state == MP_STATE_RECOVERING)
+    {
+        status = gText_ContinueMenuMultiplayerConnecting;
+    }
     else
-        status = gText_ContinueMenuMultiplayerOff;
+    {
+        status = gText_ContinueMenuMultiplayerOnline;
+    }
 
     AddTextPrinterParameterized3(windowId, FONT_NORMAL, GetStringRightAlignXOffset(FONT_NORMAL, status, rightAlignX), y, sTextColor_MenuInfo, TEXT_SKIP_DRAW, status);
 }
