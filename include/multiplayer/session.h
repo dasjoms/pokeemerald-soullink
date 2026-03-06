@@ -21,6 +21,17 @@ struct MpMetricsSnapshot
     u32 queueOverflowsByPriority[MULTIPLAYER_QUEUE_PRIORITY_COUNT];
     u32 handlerRejectCount;
     u32 peerTimeoutCount;
+    u32 rejectInvalidSenderCount;
+    u32 rejectStaleSeqCount;
+    u32 rejectWrongSessionStateCount;
+};
+
+enum MpRejectReason
+{
+    MP_REJECT_REASON_NONE,
+    MP_REJECT_REASON_INVALID_SENDER,
+    MP_REJECT_REASON_STALE_SEQ,
+    MP_REJECT_REASON_WRONG_SESSION_STATE,
 };
 
 void MpSession_Init(void);
@@ -32,9 +43,13 @@ enum MpSessionState MpSession_GetState(void);
 bool8 MpSession_IsActive(void);
 bool8 MpSession_EnqueueMessage(const struct MpMessage *msg);
 bool8 MpSession_IsPeerIdValid(u8 peerId);
+bool8 MpSession_IsLoopbackEnabled(void);
+u8 MpSession_GetLocalPlayerId(void);
+u8 MpSession_GetConnectedPlayerCount(void);
+bool8 MpSession_IsSenderInSessionRoster(u8 senderId);
 bool8 MpSession_IsIncomingSeqAcceptable(u8 peerId, u16 seq);
 void MpSession_OnPeerMessageAccepted(u8 peerId, u16 seq);
-void MpSession_OnPeerMessageRejected(u8 peerId);
+void MpSession_OnPeerMessageRejected(u8 peerId, enum MpRejectReason reason);
 void MpSession_GetMetricsSnapshot(struct MpMetricsSnapshot *snapshot);
 
 // Read-only peer cache accessors (for debug UI).

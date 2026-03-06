@@ -24,6 +24,9 @@ struct MpMetrics
     u32 recvDatagrams;
     u32 droppedDatagrams;
     u32 peerTimeoutCount;
+    u32 rejectInvalidSenderCount;
+    u32 rejectStaleSeqCount;
+    u32 rejectWrongSessionStateCount;
 };
 
 static struct MpMetrics sMetrics;
@@ -280,6 +283,29 @@ bool8 MpSession_IsPeerIdValid(u8 peerId)
     return (peerId < MP_MAX_PEERS);
 }
 
+bool8 MpSession_IsLoopbackEnabled(void)
+{
+    return FALSE;
+}
+
+u8 MpSession_GetLocalPlayerId(void)
+{
+    return sSession.localPlayerId;
+}
+
+u8 MpSession_GetConnectedPlayerCount(void)
+{
+    return sSession.playerCount;
+}
+
+bool8 MpSession_IsSenderInSessionRoster(u8 senderId)
+{
+    if (!MpSession_IsPeerIdValid(senderId))
+        return FALSE;
+
+    return senderId < sSession.playerCount;
+}
+
 bool8 MpSession_IsIncomingSeqAcceptable(u8 peerId, u16 seq)
 {
     s16 delta;
@@ -300,10 +326,26 @@ void MpSession_OnPeerMessageAccepted(u8 peerId, u16 seq)
     MpPeer_MarkSeen(peerId, seq, gMain.vblankCounter2);
 }
 
-void MpSession_OnPeerMessageRejected(u8 peerId)
+void MpSession_OnPeerMessageRejected(u8 peerId, enum MpRejectReason reason)
 {
     sMetrics.recvDatagrams++;
     sMetrics.droppedDatagrams++;
+
+    switch (reason)
+    {
+    case MP_REJECT_REASON_INVALID_SENDER:
+        sMetrics.rejectInvalidSenderCount++;
+        break;
+    case MP_REJECT_REASON_STALE_SEQ:
+        sMetrics.rejectStaleSeqCount++;
+        break;
+    case MP_REJECT_REASON_WRONG_SESSION_STATE:
+        sMetrics.rejectWrongSessionStateCount++;
+        break;
+    case MP_REJECT_REASON_NONE:
+    default:
+        break;
+    }
 
     if (!MpSession_IsPeerIdValid(peerId))
         return;
@@ -325,6 +367,9 @@ void MpSession_GetMetricsSnapshot(struct MpMetricsSnapshot *snapshot)
         snapshot->queueOverflowsByPriority[priority] = MultiplayerQueue_GetOverflowCountByPriority(&sOutgoingQueue, priority);
     snapshot->handlerRejectCount = MpDispatch_GetRejectCount();
     snapshot->peerTimeoutCount = sMetrics.peerTimeoutCount;
+    snapshot->rejectInvalidSenderCount = sMetrics.rejectInvalidSenderCount;
+    snapshot->rejectStaleSeqCount = sMetrics.rejectStaleSeqCount;
+    snapshot->rejectWrongSessionStateCount = sMetrics.rejectWrongSessionStateCount;
 }
 
 u8 MpSession_GetPeerCacheKnownCount(void)
