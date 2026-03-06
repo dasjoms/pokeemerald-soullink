@@ -158,6 +158,7 @@ static void SpawnLinkPlayerObjectEvent(u8, s16, s16, u8);
 static void InitLinkPlayerObjectEventPos(struct ObjectEvent *, s16, s16);
 static u8 GetSpriteForLinkedPlayer(u8);
 static void RunTerminateLinkScript(void);
+static void Overworld_MaybeStartExplicitMpSession(void);
 static u32 GetLinkSendQueueLength(void);
 static void ZeroLinkPlayerObjectEvent(struct LinkPlayerObjectEvent *);
 static const u8 *TryInteractWithPlayer(struct CableClubPlayer *);
@@ -1974,6 +1975,7 @@ static void CB2_LoadMapOnReturnToFieldCableClub(void)
 {
     if (LoadMapInStepsLink(&gMain.state))
     {
+        Overworld_MaybeStartExplicitMpSession();
         SetFieldVBlankCallback();
         SetMainCallback1(CB1_OverworldLink);
         ResetAllMultiplayerState();
@@ -2013,6 +2015,7 @@ void CB2_ReturnToFieldFromMultiplayer(void)
 {
     FieldClearVBlankHBlankCallbacks();
     StopMapMusic();
+    Overworld_MaybeStartExplicitMpSession();
     SetMainCallback1(CB1_OverworldLink);
     ResetAllMultiplayerState();
 
@@ -2024,6 +2027,15 @@ void CB2_ReturnToFieldFromMultiplayer(void)
     ScriptContext_Init();
     UnlockPlayerFieldControls();
     CB2_ReturnToField();
+}
+
+static void Overworld_MaybeStartExplicitMpSession(void)
+{
+    if (MpSession_GetState() == MP_STATE_DISCONNECTED)
+        MpSession_Init();
+
+    if (MpSession_GetState() == MP_STATE_DISCONNECTED)
+        MpSession_StartConnecting(MP_SESSION_START_INTENT_EXPLICIT);
 }
 
 void CB2_ReturnToFieldWithOpenMenu(void)
