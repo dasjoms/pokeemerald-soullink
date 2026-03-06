@@ -24,6 +24,8 @@ struct MpMetricsSnapshot
     u32 rejectInvalidSenderCount;
     u32 rejectStaleSeqCount;
     u32 rejectWrongSessionStateCount;
+    u32 recoveryFailureCount;
+    bool8 recoveryErrorFlag;
 };
 
 enum MpRejectReason

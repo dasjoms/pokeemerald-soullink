@@ -7,7 +7,9 @@
 #include "gba/isagbprint.h"
 
 #define MP_CONNECT_TIMEOUT_FRAMES  (60 * 10)
-#define MP_RECOVERY_TIMEOUT_FRAMES (60 * 5)
+#define MP_RECOVERY_TIMEOUT_FRAMES  (60 * 5)
+#define MP_RECOVERY_RETRY_INTERVAL_FRAMES 30
+#define MP_RECOVERY_CONFIRM_TIMEOUT_FRAMES (60 * 2)
 #define MP_PEER_TIMEOUT_FRAMES     (60 * 5)
 #define MP_HEARTBEAT_INTERVAL_FRAMES 30
 
@@ -27,10 +29,14 @@ struct MpMetrics
     u32 rejectInvalidSenderCount;
     u32 rejectStaleSeqCount;
     u32 rejectWrongSessionStateCount;
+    u32 recoveryFailureCount;
+    bool8 recoveryErrorFlag;
 };
 
 static struct MpMetrics sMetrics;
 static u32 sStateEnterFrame;
+static u32 sRecoveryLastAttemptFrame;
+static u32 sRecoveryConfirmStartFrame;
 
 static void MpPeer_ResetAll(void);
 static void MpPeer_MarkSeen(u8 peerId, u16 seq, u32 nowFrame);
@@ -116,19 +122,41 @@ static void MpSession_AdvanceState(void)
         {
             MpSession_SetState(MP_STATE_RECOVERING);
             sStateEnterFrame = gMain.vblankCounter2;
+            sRecoveryLastAttemptFrame = gMain.vblankCounter2 - MP_RECOVERY_RETRY_INTERVAL_FRAMES;
+            sRecoveryConfirmStartFrame = 0;
         }
         break;
     case MP_STATE_RECOVERING:
-        if (MultiplayerTransportLink_TryRecover())
+        if (MultiplayerTransportLink_IsConnected() && MultiplayerTransportLink_IsHandshakeReady())
         {
-            MpSession_SetState(MP_STATE_ACTIVE);
-            sStateEnterFrame = gMain.vblankCounter2;
+            if (sRecoveryConfirmStartFrame == 0)
+                sRecoveryConfirmStartFrame = gMain.vblankCounter2;
+
+            if ((gMain.vblankCounter2 - sRecoveryConfirmStartFrame) >= MP_RECOVERY_CONFIRM_TIMEOUT_FRAMES)
+            {
+                sMetrics.recoveryErrorFlag = FALSE;
+                MpSession_SetState(MP_STATE_ACTIVE);
+                sStateEnterFrame = gMain.vblankCounter2;
+            }
         }
-        else if (elapsedFrames >= MP_RECOVERY_TIMEOUT_FRAMES)
+        else
         {
-            MpSession_SetState(MP_STATE_DISCONNECTED);
-            sStateEnterFrame = gMain.vblankCounter2;
-            MultiplayerSession_Stop(&sSession);
+            sRecoveryConfirmStartFrame = 0;
+
+            if ((gMain.vblankCounter2 - sRecoveryLastAttemptFrame) >= MP_RECOVERY_RETRY_INTERVAL_FRAMES)
+            {
+                sRecoveryLastAttemptFrame = gMain.vblankCounter2;
+                (void)MultiplayerTransportLink_TryRecover();
+            }
+
+            if (elapsedFrames >= MP_RECOVERY_TIMEOUT_FRAMES)
+            {
+                sMetrics.recoveryFailureCount++;
+                sMetrics.recoveryErrorFlag = TRUE;
+                MpSession_SetState(MP_STATE_DISCONNECTED);
+                sStateEnterFrame = gMain.vblankCounter2;
+                MultiplayerSession_Stop(&sSession);
+            }
         }
         break;
     }
@@ -191,6 +219,8 @@ void MpSession_Init(void)
     sSessionState = MP_STATE_DISCONNECTED;
     MultiplayerQueue_Reset(&sOutgoingQueue);
     sStateEnterFrame = gMain.vblankCounter2;
+    sRecoveryLastAttemptFrame = 0;
+    sRecoveryConfirmStartFrame = 0;
     MpPeer_ResetAll();
 
     MultiplayerSession_Init(&sSession);
@@ -203,6 +233,8 @@ void MpSession_Reset(void)
     sSessionState = MP_STATE_DISCONNECTED;
     MultiplayerQueue_Reset(&sOutgoingQueue);
     sStateEnterFrame = gMain.vblankCounter2;
+    sRecoveryLastAttemptFrame = 0;
+    sRecoveryConfirmStartFrame = 0;
     MpPeer_ResetAll();
 }
 
@@ -213,8 +245,11 @@ void MpSession_StartConnecting(u8 startIntentFlags)
     MultiplayerQueue_Reset(&sOutgoingQueue);
 
     MultiplayerSession_Start(&sSession);
+    sMetrics.recoveryErrorFlag = FALSE;
     MpSession_SetState(MP_STATE_CONNECTING);
     sStateEnterFrame = gMain.vblankCounter2;
+    sRecoveryLastAttemptFrame = 0;
+    sRecoveryConfirmStartFrame = 0;
 }
 
 void MpSession_TickOverworldPre(void)
@@ -370,6 +405,8 @@ void MpSession_GetMetricsSnapshot(struct MpMetricsSnapshot *snapshot)
     snapshot->rejectInvalidSenderCount = sMetrics.rejectInvalidSenderCount;
     snapshot->rejectStaleSeqCount = sMetrics.rejectStaleSeqCount;
     snapshot->rejectWrongSessionStateCount = sMetrics.rejectWrongSessionStateCount;
+    snapshot->recoveryFailureCount = sMetrics.recoveryFailureCount;
+    snapshot->recoveryErrorFlag = sMetrics.recoveryErrorFlag;
 }
 
 u8 MpSession_GetPeerCacheKnownCount(void)
