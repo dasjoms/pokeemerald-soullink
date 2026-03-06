@@ -14,6 +14,7 @@
 #include "link_rfu.h"
 #include "load_save.h"
 #include "m4a.h"
+#include "multiplayer/session.h"
 #include "menu.h"
 #include "overworld.h"
 #include "palette.h"
@@ -1035,6 +1036,7 @@ void CleanupLinkRoomState(void)
 
 void ExitLinkRoom(void)
 {
+    MpSession_StopAndShutdown();
     QueueExitLinkRoomKey();
 }
 
