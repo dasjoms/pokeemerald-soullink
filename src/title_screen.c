@@ -10,6 +10,8 @@
 #include "m4a.h"
 #include "main.h"
 #include "main_menu.h"
+#include "window.h"
+#include "link.h"
 #include "palette.h"
 #include "reset_rtc_screen.h"
 #include "berry_fix_program.h"
@@ -22,6 +24,7 @@
 #include "graphics.h"
 #include "constants/rgb.h"
 #include "constants/songs.h"
+#include "config/debug.h"
 
 enum {
     TAG_VERSION = 1000,
@@ -40,6 +43,37 @@ enum {
 #define RESET_RTC_BUTTON_COMBO (B_BUTTON | SELECT_BUTTON | DPAD_LEFT)
 #define BERRY_UPDATE_BUTTON_COMBO (B_BUTTON | SELECT_BUTTON)
 #define A_B_START_SELECT (A_BUTTON | B_BUTTON | START_BUTTON | SELECT_BUTTON)
+
+#if DEBUG_TITLE_LINK_STATUS
+#define LINK_STATUS_WINDOW_BG      0
+#define LINK_STATUS_WINDOW_X       1
+#define LINK_STATUS_WINDOW_Y       1
+#define LINK_STATUS_WINDOW_WIDTH   10
+#define LINK_STATUS_WINDOW_HEIGHT  2
+#define LINK_STATUS_REFRESH_FRAMES 8
+
+static const struct WindowTemplate sLinkStatusWindowTemplate =
+{
+    .bg = LINK_STATUS_WINDOW_BG,
+    .tilemapLeft = LINK_STATUS_WINDOW_X,
+    .tilemapTop = LINK_STATUS_WINDOW_Y,
+    .width = LINK_STATUS_WINDOW_WIDTH,
+    .height = LINK_STATUS_WINDOW_HEIGHT,
+    .paletteNum = 15,
+    .baseBlock = 1,
+};
+
+static EWRAM_DATA u8 sLinkStatusWindowId = WINDOW_NONE;
+static EWRAM_DATA u8 sLinkStatusRefreshTimer = 0;
+
+static const u8 sText_LinkStatusOff[] = _("LINK: OFF");
+static const u8 sText_LinkStatusWait[] = _("LINK: WAIT");
+static const u8 sText_LinkStatusOn[] = _("LINK: ON");
+
+static void InitTitleLinkStatusWindow(void);
+static void UpdateTitleLinkStatus(void);
+static void RemoveTitleLinkStatusWindow(void);
+#endif
 
 static void MainCB2(void);
 static void Task_TitleScreenPhase1(u8);
@@ -550,6 +584,57 @@ static void StartPokemonLogoShine(u8 mode)
 #undef sMode
 #undef sBgColor
 
+#if DEBUG_TITLE_LINK_STATUS
+static void InitTitleLinkStatusWindow(void)
+{
+    if (sLinkStatusWindowId != WINDOW_NONE)
+        return;
+
+    sLinkStatusWindowId = AddWindow(&sLinkStatusWindowTemplate);
+    if (sLinkStatusWindowId == WINDOW_NONE)
+        return;
+
+    FillWindowPixelBuffer(sLinkStatusWindowId, PIXEL_FILL(1));
+    PutWindowTilemap(sLinkStatusWindowId);
+    CopyWindowToVram(sLinkStatusWindowId, COPYWIN_FULL);
+    sLinkStatusRefreshTimer = 0;
+}
+
+static void UpdateTitleLinkStatus(void)
+{
+    const u8 *text;
+
+    if (sLinkStatusWindowId == WINDOW_NONE)
+        return;
+
+    if (++sLinkStatusRefreshTimer < LINK_STATUS_REFRESH_FRAMES)
+        return;
+
+    sLinkStatusRefreshTimer = 0;
+
+    if (!gReceivedRemoteLinkPlayers)
+        text = sText_LinkStatusOff;
+    else if (!EXTRACT_CONN_ESTABLISHED(gLinkStatus))
+        text = sText_LinkStatusWait;
+    else
+        text = sText_LinkStatusOn;
+
+    FillWindowPixelBuffer(sLinkStatusWindowId, PIXEL_FILL(1));
+    AddTextPrinterParameterized(sLinkStatusWindowId, FONT_SMALL, text, 0, 0, TEXT_SKIP_DRAW, NULL);
+    CopyWindowToVram(sLinkStatusWindowId, COPYWIN_GFX);
+}
+
+static void RemoveTitleLinkStatusWindow(void)
+{
+    if (sLinkStatusWindowId == WINDOW_NONE)
+        return;
+
+    ClearWindowTilemap(sLinkStatusWindowId);
+    RemoveWindow(sLinkStatusWindowId);
+    sLinkStatusWindowId = WINDOW_NONE;
+}
+#endif
+
 static void VBlankCB(void)
 {
     ScanlineEffect_InitHBlankDmaTransfer();
@@ -589,6 +674,10 @@ void CB2_InitTitleScreen(void)
         DmaFill32(3, 0, (void *)OAM, OAM_SIZE);
         DmaFill16(3, 0, (void *)(PLTT + 2), PLTT_SIZE - 2);
         ResetPaletteFade();
+#if DEBUG_TITLE_LINK_STATUS
+        sLinkStatusWindowId = WINDOW_NONE;
+        sLinkStatusRefreshTimer = 0;
+#endif
         gMain.state = 1;
         break;
     case 1:
@@ -622,6 +711,9 @@ void CB2_InitTitleScreen(void)
         gTasks[taskId].tSkipToNext = FALSE;
         gTasks[taskId].tPointless = -16;
         gTasks[taskId].tBg2Y = -32;
+#if DEBUG_TITLE_LINK_STATUS
+        InitTitleLinkStatusWindow();
+#endif
         gMain.state = 3;
         break;
     }
@@ -675,6 +767,9 @@ static void MainCB2(void)
     AnimateSprites();
     BuildOamBuffer();
     UpdatePaletteFade();
+#if DEBUG_TITLE_LINK_STATUS
+    UpdateTitleLinkStatus();
+#endif
 }
 
 // Shine the Pokémon logo two more times, and fade in the version banner
@@ -820,30 +915,45 @@ static void Task_TitleScreenPhase3(u8 taskId)
 
 static void CB2_GoToMainMenu(void)
 {
+#if DEBUG_TITLE_LINK_STATUS
+    RemoveTitleLinkStatusWindow();
+#endif
     if (!UpdatePaletteFade())
         SetMainCallback2(CB2_InitMainMenu);
 }
 
 static void CB2_GoToCopyrightScreen(void)
 {
+#if DEBUG_TITLE_LINK_STATUS
+    RemoveTitleLinkStatusWindow();
+#endif
     if (!UpdatePaletteFade())
         SetMainCallback2(CB2_InitCopyrightScreenAfterTitleScreen);
 }
 
 static void CB2_GoToClearSaveDataScreen(void)
 {
+#if DEBUG_TITLE_LINK_STATUS
+    RemoveTitleLinkStatusWindow();
+#endif
     if (!UpdatePaletteFade())
         SetMainCallback2(CB2_InitClearSaveDataScreen);
 }
 
 static void CB2_GoToResetRtcScreen(void)
 {
+#if DEBUG_TITLE_LINK_STATUS
+    RemoveTitleLinkStatusWindow();
+#endif
     if (!UpdatePaletteFade())
         SetMainCallback2(CB2_InitResetRtcScreen);
 }
 
 static void CB2_GoToBerryFixScreen(void)
 {
+#if DEBUG_TITLE_LINK_STATUS
+    RemoveTitleLinkStatusWindow();
+#endif
     if (!UpdatePaletteFade())
     {
         m4aMPlayAllStop();
