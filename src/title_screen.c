@@ -65,14 +65,24 @@ static const struct WindowTemplate sLinkStatusWindowTemplate =
 
 static EWRAM_DATA u8 sLinkStatusWindowId = WINDOW_NONE;
 static EWRAM_DATA u8 sLinkStatusRefreshTimer = 0;
+static EWRAM_DATA u8 sLinkStatusLastStatus = 0xFF;
 
 static const u8 sText_LinkStatusOff[] = _("LINK: OFF");
 static const u8 sText_LinkStatusWait[] = _("LINK: WAIT");
 static const u8 sText_LinkStatusOn[] = _("LINK: ON");
 
+enum TitleLinkStatus
+{
+    TITLE_LINK_STATUS_OFF,
+    TITLE_LINK_STATUS_WAIT,
+    TITLE_LINK_STATUS_ON,
+};
+
 static void InitTitleLinkStatusWindow(void);
 static void UpdateTitleLinkStatus(void);
 static void RemoveTitleLinkStatusWindow(void);
+static enum TitleLinkStatus GetTitleLinkStatusTelemetry(void);
+static const u8 *GetTitleLinkStatusText(enum TitleLinkStatus status);
 #endif
 
 static void MainCB2(void);
@@ -598,10 +608,12 @@ static void InitTitleLinkStatusWindow(void)
     PutWindowTilemap(sLinkStatusWindowId);
     CopyWindowToVram(sLinkStatusWindowId, COPYWIN_FULL);
     sLinkStatusRefreshTimer = 0;
+    sLinkStatusLastStatus = 0xFF;
 }
 
 static void UpdateTitleLinkStatus(void)
 {
+    enum TitleLinkStatus status;
     const u8 *text;
 
     if (sLinkStatusWindowId == WINDOW_NONE)
@@ -611,17 +623,50 @@ static void UpdateTitleLinkStatus(void)
         return;
 
     sLinkStatusRefreshTimer = 0;
+    status = GetTitleLinkStatusTelemetry();
+    if (status == sLinkStatusLastStatus)
+        return;
 
-    if (!gReceivedRemoteLinkPlayers)
-        text = sText_LinkStatusOff;
-    else if (!EXTRACT_CONN_ESTABLISHED(gLinkStatus))
-        text = sText_LinkStatusWait;
-    else
-        text = sText_LinkStatusOn;
+    sLinkStatusLastStatus = status;
+    text = GetTitleLinkStatusText(status);
 
     FillWindowPixelBuffer(sLinkStatusWindowId, PIXEL_FILL(1));
     AddTextPrinterParameterized(sLinkStatusWindowId, FONT_SMALL, text, 0, 0, TEXT_SKIP_DRAW, NULL);
     CopyWindowToVram(sLinkStatusWindowId, COPYWIN_GFX);
+}
+
+static enum TitleLinkStatus GetTitleLinkStatusTelemetry(void)
+{
+    u8 playerCount = GetLinkPlayerCount();
+    bool8 isEstablished = IsLinkConnectionEstablished();
+    bool8 hasError = HasLinkErrorOccurred();
+    bool8 hasActiveLinkContext;
+
+    if (hasError)
+        return TITLE_LINK_STATUS_OFF;
+
+    hasActiveLinkContext = (gReceivedRemoteLinkPlayers || gWirelessCommType != 0 || isEstablished || playerCount > 1);
+    if (!hasActiveLinkContext)
+        return TITLE_LINK_STATUS_OFF;
+
+    if (isEstablished && playerCount > 1)
+        return TITLE_LINK_STATUS_ON;
+
+    return TITLE_LINK_STATUS_WAIT;
+}
+
+static const u8 *GetTitleLinkStatusText(enum TitleLinkStatus status)
+{
+    switch (status)
+    {
+    case TITLE_LINK_STATUS_ON:
+        return sText_LinkStatusOn;
+    case TITLE_LINK_STATUS_WAIT:
+        return sText_LinkStatusWait;
+    case TITLE_LINK_STATUS_OFF:
+    default:
+        return sText_LinkStatusOff;
+    }
 }
 
 static void RemoveTitleLinkStatusWindow(void)
@@ -632,6 +677,7 @@ static void RemoveTitleLinkStatusWindow(void)
     ClearWindowTilemap(sLinkStatusWindowId);
     RemoveWindow(sLinkStatusWindowId);
     sLinkStatusWindowId = WINDOW_NONE;
+    sLinkStatusLastStatus = 0xFF;
 }
 #endif
 
@@ -677,6 +723,7 @@ void CB2_InitTitleScreen(void)
 #if DEBUG_TITLE_LINK_STATUS
         sLinkStatusWindowId = WINDOW_NONE;
         sLinkStatusRefreshTimer = 0;
+        sLinkStatusLastStatus = 0xFF;
 #endif
         gMain.state = 1;
         break;
