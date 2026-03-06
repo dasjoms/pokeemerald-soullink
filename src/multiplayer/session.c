@@ -1,4 +1,5 @@
 #include "global.h"
+#include "main.h"
 #include "multiplayer/dispatch.h"
 #include "multiplayer/session.h"
 #include "multiplayer/queue.h"
