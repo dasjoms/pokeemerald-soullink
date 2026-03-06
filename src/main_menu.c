@@ -244,8 +244,7 @@ static void MainMenu_FormatSavegamePlayer(void);
 static void MainMenu_FormatSavegamePokedex(void);
 static void MainMenu_FormatSavegameTime(void);
 static void MainMenu_FormatSavegameBadges(void);
-static void MainMenu_FormatMultiplayerInfo(void);
-static void MainMenu_FormatMultiplayerInfoWindow(u8 windowId, u8 x, u8 y, u8 rightAlignX);
+static void MainMenu_FormatMultiplayerStatusText(u8 windowId, u8 x, u8 y, u8 rightAlignX);
 
 // .rodata
 
@@ -811,7 +810,7 @@ static void Task_DisplayMainMenu(u8 taskId)
             FillWindowPixelBuffer(1, PIXEL_FILL(0xA));
             AddTextPrinterParameterized3(0, FONT_NORMAL, 0, 1, sTextColor_Headers, TEXT_SKIP_DRAW, gText_MainMenuNewGame);
             AddTextPrinterParameterized3(1, FONT_NORMAL, 0, 1, sTextColor_Headers, TEXT_SKIP_DRAW, gText_MainMenuOption);
-            MainMenu_FormatMultiplayerInfoWindow(1, 0x80, 1, 0xD0);
+            MainMenu_FormatMultiplayerStatusText(1, 0x80, 1, 0xD0);
             PutWindowTilemap(0);
             PutWindowTilemap(1);
             CopyWindowToVram(0, COPYWIN_GFX);
@@ -827,6 +826,7 @@ static void Task_DisplayMainMenu(u8 taskId)
             AddTextPrinterParameterized3(3, FONT_NORMAL, 0, 1, sTextColor_Headers, TEXT_SKIP_DRAW, gText_MainMenuNewGame);
             AddTextPrinterParameterized3(4, FONT_NORMAL, 0, 1, sTextColor_Headers, TEXT_SKIP_DRAW, gText_MainMenuOption);
             MainMenu_FormatSavegameText();
+            MainMenu_FormatMultiplayerStatusText(3, 0x80, 1, 0xD0);
             PutWindowTilemap(2);
             PutWindowTilemap(3);
             PutWindowTilemap(4);
@@ -847,6 +847,7 @@ static void Task_DisplayMainMenu(u8 taskId)
             AddTextPrinterParameterized3(4, FONT_NORMAL, 0, 1, sTextColor_Headers, TEXT_SKIP_DRAW, gText_MainMenuMysteryGift);
             AddTextPrinterParameterized3(5, FONT_NORMAL, 0, 1, sTextColor_Headers, TEXT_SKIP_DRAW, gText_MainMenuOption);
             MainMenu_FormatSavegameText();
+            MainMenu_FormatMultiplayerStatusText(5, 0x80, 1, 0xD0);
             PutWindowTilemap(2);
             PutWindowTilemap(3);
             PutWindowTilemap(4);
@@ -872,6 +873,7 @@ static void Task_DisplayMainMenu(u8 taskId)
             AddTextPrinterParameterized3(5, FONT_NORMAL, 0, 1, sTextColor_Headers, TEXT_SKIP_DRAW, gText_MainMenuMysteryEvents);
             AddTextPrinterParameterized3(6, FONT_NORMAL, 0, 1, sTextColor_Headers, TEXT_SKIP_DRAW, gText_MainMenuOption);
             MainMenu_FormatSavegameText();
+            MainMenu_FormatMultiplayerStatusText(6, 0x80, 1, 0xD0);
             PutWindowTilemap(2);
             PutWindowTilemap(3);
             PutWindowTilemap(4);
@@ -2175,7 +2177,6 @@ static void MainMenu_FormatSavegameText(void)
     MainMenu_FormatSavegamePokedex();
     MainMenu_FormatSavegameTime();
     MainMenu_FormatSavegameBadges();
-    MainMenu_FormatMultiplayerInfo();
 }
 
 static void MainMenu_FormatSavegamePlayer(void)
@@ -2233,18 +2234,12 @@ static void MainMenu_FormatSavegameBadges(void)
     AddTextPrinterParameterized3(2, FONT_NORMAL, GetStringRightAlignXOffset(FONT_NORMAL, str, 0xD0), 33, sTextColor_MenuInfo, TEXT_SKIP_DRAW, str);
 }
 
-static void MainMenu_FormatMultiplayerInfo(void)
-{
-    MainMenu_FormatMultiplayerInfoWindow(2, 0, 49, 100);
-}
-
-static void MainMenu_FormatMultiplayerInfoWindow(u8 windowId, u8 x, u8 y, u8 rightAlignX)
+static void MainMenu_FormatMultiplayerStatusText(u8 windowId, u8 x, u8 y, u8 rightAlignX)
 {
     const u8 *status;
     struct MpSessionUiSnapshot snapshot;
 
-    StringExpandPlaceholders(gStringVar4, gText_ContinueMenuMultiplayer);
-    AddTextPrinterParameterized3(windowId, FONT_NORMAL, x, y, sTextColor_MenuInfo, TEXT_SKIP_DRAW, gStringVar4);
+    AddTextPrinterParameterized3(windowId, FONT_NORMAL, x, y, sTextColor_MenuInfo, TEXT_SKIP_DRAW, gText_ContinueMenuMultiplayer);
 
     MpSession_GetUiSnapshot(&snapshot);
     if (!snapshot.isInitialized || snapshot.state == MP_STATE_DISCONNECTED)
