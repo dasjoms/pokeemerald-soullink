@@ -39,6 +39,7 @@
 #include "title_screen.h"
 #include "window.h"
 #include "mystery_gift_menu.h"
+#include "multiplayer/session.h"
 
 /*
  * Main menu state machine
@@ -243,6 +244,7 @@ static void MainMenu_FormatSavegamePlayer(void);
 static void MainMenu_FormatSavegamePokedex(void);
 static void MainMenu_FormatSavegameTime(void);
 static void MainMenu_FormatSavegameBadges(void);
+static void MainMenu_FormatMultiplayerInfo(void);
 
 // .rodata
 
@@ -274,6 +276,9 @@ static const u8 gText_ContinueMenuPlayer[] = _("PLAYER");
 static const u8 gText_ContinueMenuTime[] = _("TIME");
 static const u8 gText_ContinueMenuPokedex[] = _("POKéDEX");
 static const u8 gText_ContinueMenuBadges[] = _("BADGES");
+static const u8 gText_ContinueMenuMultiplayer[] = _("LINK");
+static const u8 gText_ContinueMenuMultiplayerOff[] = _("OFF");
+static const u8 gText_ContinueMenuMultiplayerOn[] = _("ON");
 
 #define MENU_LEFT 2
 #define MENU_TOP_WIN0 1
@@ -2167,6 +2172,7 @@ static void MainMenu_FormatSavegameText(void)
     MainMenu_FormatSavegamePokedex();
     MainMenu_FormatSavegameTime();
     MainMenu_FormatSavegameBadges();
+    MainMenu_FormatMultiplayerInfo();
 }
 
 static void MainMenu_FormatSavegamePlayer(void)
@@ -2222,6 +2228,21 @@ static void MainMenu_FormatSavegameBadges(void)
     AddTextPrinterParameterized3(2, FONT_NORMAL, 0x6C, 33, sTextColor_MenuInfo, TEXT_SKIP_DRAW, gStringVar4);
     ConvertIntToDecimalStringN(str, badgeCount, STR_CONV_MODE_LEADING_ZEROS, 1);
     AddTextPrinterParameterized3(2, FONT_NORMAL, GetStringRightAlignXOffset(FONT_NORMAL, str, 0xD0), 33, sTextColor_MenuInfo, TEXT_SKIP_DRAW, str);
+}
+
+static void MainMenu_FormatMultiplayerInfo(void)
+{
+    const u8 *status;
+
+    StringExpandPlaceholders(gStringVar4, gText_ContinueMenuMultiplayer);
+    AddTextPrinterParameterized3(2, FONT_NORMAL, 0, 49, sTextColor_MenuInfo, TEXT_SKIP_DRAW, gStringVar4);
+
+    if (MpSession_IsActive())
+        status = gText_ContinueMenuMultiplayerOn;
+    else
+        status = gText_ContinueMenuMultiplayerOff;
+
+    AddTextPrinterParameterized3(2, FONT_NORMAL, GetStringRightAlignXOffset(FONT_NORMAL, status, 100), 49, sTextColor_MenuInfo, TEXT_SKIP_DRAW, status);
 }
 
 static void LoadMainMenuWindowFrameTiles(u8 bgId, u16 tileOffset)
