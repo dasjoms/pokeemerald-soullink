@@ -3,6 +3,20 @@
 
 #include "multiplayer/types.h"
 
+void MpSession_Init(void);
+void MpSession_Reset(void);
+void MpSession_StartConnecting(void);
+void MpSession_TickOverworldPre(void);
+void MpSession_TickOverworldPost(void);
+enum MpSessionState MpSession_GetState(void);
+bool8 MpSession_IsActive(void);
+bool8 MpSession_EnqueueMessage(const struct MpMessage *msg);
+
+// Read-only peer cache accessors (for debug UI).
+u8 MpSession_GetPeerCacheKnownCount(void);
+u8 MpSession_GetPeerCacheActiveCount(void);
+u8 MpSession_GetPeerHealth(u8 playerId);
+
 void MultiplayerSession_Init(struct MultiplayerSession *session);
 void MultiplayerSession_Start(struct MultiplayerSession *session);
 void MultiplayerSession_Stop(struct MultiplayerSession *session);
