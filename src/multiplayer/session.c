@@ -15,6 +15,16 @@ static struct MultiplayerSession sSession;
 static enum MpSessionState sSessionState;
 static struct MpPeerState sPeerCache[MP_MAX_PEERS];
 static struct MpMessage sMessageQueue[MULTIPLAYER_QUEUE_CAPACITY];
+struct MpMetrics
+{
+    u32 stateTransitions;
+    u32 recvDatagrams;
+    u32 droppedDatagrams;
+    u32 queueOverflowsByPriority[MULTIPLAYER_QUEUE_PRIORITY_COUNT];
+    u32 peerTimeoutCount;
+};
+
+static struct MpMetrics sMetrics;
 static u8 sMessageQueueTail;
 static u8 sMessageQueueCount;
 static u32 sStateEnterFrame;
@@ -24,6 +34,8 @@ static void MpPeer_MarkSeen(u8 peerId, u16 seq, u32 nowFrame);
 static void MpPeer_MarkDisconnected(u8 peerId);
 static bool8 MpPeer_IsTimedOut(u8 peerId, u32 nowFrame);
 static void MpSession_AdvanceState(void);
+static void MpSession_SetState(enum MpSessionState newState);
+static u8 MpSession_NormalizePriority(u8 priority);
 
 // Multiplayer session manager policy:
 // - Must not depend on union-room state machine symbols.
@@ -83,12 +95,12 @@ static void MpSession_AdvanceState(void)
     case MP_STATE_CONNECTING:
         if (MultiplayerTransportLink_IsConnected() && MultiplayerTransportLink_IsHandshakeReady())
         {
-            sSessionState = MP_STATE_ACTIVE;
+            MpSession_SetState(MP_STATE_ACTIVE);
             sStateEnterFrame = gMain.vblankCounter2;
         }
         else if (elapsedFrames >= MP_CONNECT_TIMEOUT_FRAMES)
         {
-            sSessionState = MP_STATE_DISCONNECTED;
+            MpSession_SetState(MP_STATE_DISCONNECTED);
             sStateEnterFrame = gMain.vblankCounter2;
             MultiplayerSession_Stop(&sSession);
         }
@@ -96,19 +108,19 @@ static void MpSession_AdvanceState(void)
     case MP_STATE_ACTIVE:
         if (MultiplayerTransportLink_IsDegraded())
         {
-            sSessionState = MP_STATE_RECOVERING;
+            MpSession_SetState(MP_STATE_RECOVERING);
             sStateEnterFrame = gMain.vblankCounter2;
         }
         break;
     case MP_STATE_RECOVERING:
         if (MultiplayerTransportLink_TryRecover())
         {
-            sSessionState = MP_STATE_ACTIVE;
+            MpSession_SetState(MP_STATE_ACTIVE);
             sStateEnterFrame = gMain.vblankCounter2;
         }
         else if (elapsedFrames >= MP_RECOVERY_TIMEOUT_FRAMES)
         {
-            sSessionState = MP_STATE_DISCONNECTED;
+            MpSession_SetState(MP_STATE_DISCONNECTED);
             sStateEnterFrame = gMain.vblankCounter2;
             MultiplayerSession_Stop(&sSession);
         }
@@ -116,8 +128,26 @@ static void MpSession_AdvanceState(void)
     }
 }
 
+static void MpSession_SetState(enum MpSessionState newState)
+{
+    if (sSessionState != newState)
+    {
+        sSessionState = newState;
+        sMetrics.stateTransitions++;
+    }
+}
+
+static u8 MpSession_NormalizePriority(u8 priority)
+{
+    if (priority >= MULTIPLAYER_QUEUE_PRIORITY_COUNT)
+        return MULTIPLAYER_QUEUE_PRIORITY_NORMAL;
+
+    return priority;
+}
+
 void MpSession_Init(void)
 {
+    CpuFill32(0, &sMetrics, sizeof(sMetrics));
     sSessionState = MP_STATE_DISCONNECTED;
     sMessageQueueTail = 0;
     sMessageQueueCount = 0;
@@ -130,6 +160,7 @@ void MpSession_Init(void)
 void MpSession_Reset(void)
 {
     MultiplayerSession_Stop(&sSession);
+    CpuFill32(0, &sMetrics, sizeof(sMetrics));
     sSessionState = MP_STATE_DISCONNECTED;
     sMessageQueueTail = 0;
     sMessageQueueCount = 0;
@@ -142,7 +173,7 @@ void MpSession_StartConnecting(u8 startIntentFlags)
     AGB_ASSERT(startIntentFlags & MP_SESSION_START_INTENT_EXPLICIT);
 
     MultiplayerSession_Start(&sSession);
-    sSessionState = MP_STATE_CONNECTING;
+    MpSession_SetState(MP_STATE_CONNECTING);
     sStateEnterFrame = gMain.vblankCounter2;
 }
 
@@ -166,7 +197,10 @@ void MpSession_TickOverworldPost(void)
     for (i = 0; i < MP_MAX_PEERS; i++)
     {
         if (MpPeer_IsTimedOut(i, nowFrame))
+        {
+            sMetrics.peerTimeoutCount++;
             MpPeer_MarkDisconnected(i);
+        }
     }
 }
 
@@ -182,11 +216,18 @@ bool8 MpSession_IsActive(void)
 
 bool8 MpSession_EnqueueMessage(const struct MpMessage *msg)
 {
+    u8 priority;
+
     if (msg == NULL)
         return FALSE;
 
+    priority = MpSession_NormalizePriority(msg->header.priority);
+
     if (sMessageQueueCount >= MULTIPLAYER_QUEUE_CAPACITY)
+    {
+        sMetrics.queueOverflowsByPriority[priority]++;
         return FALSE;
+    }
 
     sMessageQueue[sMessageQueueTail] = *msg;
     sMessageQueueTail = (sMessageQueueTail + 1) % MULTIPLAYER_QUEUE_CAPACITY;
@@ -202,15 +243,35 @@ bool8 MpSession_IsPeerIdValid(u8 peerId)
 
 void MpSession_OnPeerMessageAccepted(u8 peerId, u16 seq)
 {
+    sMetrics.recvDatagrams++;
     MpPeer_MarkSeen(peerId, seq, gMain.vblankCounter2);
 }
 
 void MpSession_OnPeerMessageRejected(u8 peerId)
 {
+    sMetrics.recvDatagrams++;
+    sMetrics.droppedDatagrams++;
+
     if (!MpSession_IsPeerIdValid(peerId))
         return;
 
     sPeerCache[peerId].statusBits |= MP_PEER_STATUS_DISCONNECTED;
+}
+
+void MpSession_GetMetricsSnapshot(struct MpMetricsSnapshot *snapshot)
+{
+    u8 priority;
+
+    if (snapshot == NULL)
+        return;
+
+    snapshot->stateTransitions = sMetrics.stateTransitions;
+    snapshot->recvDatagrams = sMetrics.recvDatagrams;
+    snapshot->droppedDatagrams = sMetrics.droppedDatagrams;
+    for (priority = 0; priority < MULTIPLAYER_QUEUE_PRIORITY_COUNT; priority++)
+        snapshot->queueOverflowsByPriority[priority] = sMetrics.queueOverflowsByPriority[priority];
+    snapshot->handlerRejectCount = MpDispatch_GetRejectCount();
+    snapshot->peerTimeoutCount = sMetrics.peerTimeoutCount;
 }
 
 u8 MpSession_GetPeerCacheKnownCount(void)
