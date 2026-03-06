@@ -37,6 +37,8 @@ bool32 MpTransport_SendDatagram(const void *data, u16 size)
 
 u16 MpTransport_PollReceive(void *data, u16 capacity)
 {
+    u16 copySize;
+    u16 recvSize;
     u8 status;
     u8 i;
 
@@ -51,9 +53,11 @@ u16 MpTransport_PollReceive(void *data, u16 capacity)
     {
         if ((status & (1 << i)) != 0)
         {
-            memcpy(data, gBlockRecvBuffer[i], capacity);
+            recvSize = GetBlockReceivedSize(i);
+            copySize = min(recvSize, capacity);
+            memcpy(data, gBlockRecvBuffer[i], copySize);
             ResetBlockReceivedFlag(i);
-            return capacity;
+            return copySize;
         }
     }
 

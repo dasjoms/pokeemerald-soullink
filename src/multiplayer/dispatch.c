@@ -28,11 +28,29 @@ void MultiplayerDispatch_Init(void)
 void MultiplayerDispatch_Tick(struct MultiplayerSession *session)
 {
     struct MpMessage msg;
+    u16 payloadSize;
+    u16 recvSize;
 
     (void)session;
 
-    while (MultiplayerTransportLink_Recv(&msg, sizeof(msg)) != 0)
+    while ((recvSize = MultiplayerTransportLink_Recv(&msg, sizeof(msg))) != 0)
+    {
+        if (recvSize < sizeof(struct MpMessageHeader))
+        {
+            sDispatchRejectCount++;
+            continue;
+        }
+
+        payloadSize = recvSize - sizeof(msg.header);
+        if (msg.header.payloadLen > payloadSize)
+        {
+            sDispatchRejectCount++;
+            MpSession_OnPeerMessageRejected(msg.header.senderId);
+            continue;
+        }
+
         MpDispatch_HandleInbound(&msg);
+    }
 }
 
 bool8 MpDispatch_HandleInbound(const struct MpMessage *msg)
