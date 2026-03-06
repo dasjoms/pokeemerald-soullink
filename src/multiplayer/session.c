@@ -6,6 +6,9 @@
 
 #define MP_CONNECT_TIMEOUT_FRAMES  (60 * 10)
 #define MP_RECOVERY_TIMEOUT_FRAMES (60 * 5)
+#define MP_PEER_TIMEOUT_FRAMES     (60 * 5)
+
+#define MP_PEER_STATUS_DISCONNECTED (1 << 0)
 
 static struct MultiplayerSession sSession;
 static enum MpSessionState sSessionState;
@@ -15,10 +18,13 @@ static u8 sMessageQueueTail;
 static u8 sMessageQueueCount;
 static u32 sStateEnterFrame;
 
-static void MpSession_ClearPeerCache(void);
+static void MpPeer_ResetAll(void);
+static void MpPeer_MarkSeen(u8 peerId, u16 seq, u32 nowFrame);
+static void MpPeer_MarkDisconnected(u8 peerId);
+static bool8 MpPeer_IsTimedOut(u8 peerId, u32 nowFrame);
 static void MpSession_AdvanceState(void);
 
-static void MpSession_ClearPeerCache(void)
+static void MpPeer_ResetAll(void)
 {
     u8 i;
 
@@ -31,6 +37,35 @@ static void MpSession_ClearPeerCache(void)
         sPeerCache[i].lastSeqSent = 0;
         sPeerCache[i].statusBits = 0;
     }
+}
+
+static void MpPeer_MarkSeen(u8 peerId, u16 seq, u32 nowFrame)
+{
+    if (peerId >= MP_MAX_PEERS)
+        return;
+
+    sPeerCache[peerId].active = TRUE;
+    sPeerCache[peerId].playerId = peerId;
+    sPeerCache[peerId].lastSeenFrame = nowFrame;
+    sPeerCache[peerId].lastSeqRecv = seq;
+    sPeerCache[peerId].statusBits &= ~MP_PEER_STATUS_DISCONNECTED;
+}
+
+static void MpPeer_MarkDisconnected(u8 peerId)
+{
+    if (peerId >= MP_MAX_PEERS)
+        return;
+
+    sPeerCache[peerId].active = FALSE;
+    sPeerCache[peerId].statusBits |= MP_PEER_STATUS_DISCONNECTED;
+}
+
+static bool8 MpPeer_IsTimedOut(u8 peerId, u32 nowFrame)
+{
+    if (peerId >= MP_MAX_PEERS || !sPeerCache[peerId].active)
+        return FALSE;
+
+    return (nowFrame - sPeerCache[peerId].lastSeenFrame) >= MP_PEER_TIMEOUT_FRAMES;
 }
 
 static void MpSession_AdvanceState(void)
@@ -83,7 +118,7 @@ void MpSession_Init(void)
     sMessageQueueTail = 0;
     sMessageQueueCount = 0;
     sStateEnterFrame = gMain.vblankCounter2;
-    MpSession_ClearPeerCache();
+    MpPeer_ResetAll();
 
     MultiplayerSession_Init(&sSession);
 }
@@ -95,7 +130,7 @@ void MpSession_Reset(void)
     sMessageQueueTail = 0;
     sMessageQueueCount = 0;
     sStateEnterFrame = gMain.vblankCounter2;
-    MpSession_ClearPeerCache();
+    MpPeer_ResetAll();
 }
 
 void MpSession_StartConnecting(void)
@@ -112,10 +147,21 @@ void MpSession_TickOverworldPre(void)
 
     MultiplayerSession_Tick(&sSession);
     MpSession_AdvanceState();
+
+    if (sSessionState != MP_STATE_DISCONNECTED)
+        MpPeer_MarkSeen(sSession.localPlayerId, sPeerCache[sSession.localPlayerId].lastSeqRecv, gMain.vblankCounter2);
 }
 
 void MpSession_TickOverworldPost(void)
 {
+    u8 i;
+    u32 nowFrame = gMain.vblankCounter2;
+
+    for (i = 0; i < MP_MAX_PEERS; i++)
+    {
+        if (MpPeer_IsTimedOut(i, nowFrame))
+            MpPeer_MarkDisconnected(i);
+    }
 }
 
 enum MpSessionState MpSession_GetState(void)
