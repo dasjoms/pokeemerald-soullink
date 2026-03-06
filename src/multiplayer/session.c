@@ -7,6 +7,7 @@
 static EWRAM_DATA bool8 sLinkProbeStarted = FALSE;
 static EWRAM_DATA enum MultiplayerLinkState sLinkState = MULTIPLAYER_LINK_OFFLINE;
 static EWRAM_DATA u8 sPlayerCount = 0;
+static EWRAM_DATA u16 sProbeFrames = 0;
 
 static void UpdateLinkProbeState(void)
 {
@@ -20,7 +21,7 @@ static void UpdateLinkProbeState(void)
     {
         sLinkState = MULTIPLAYER_LINK_ONLINE;
     }
-    else if (sLinkProbeStarted && gLinkStatus != 0)
+    else if (sLinkProbeStarted && sProbeFrames < 180)
     {
         sLinkState = MULTIPLAYER_LINK_CONNECTING;
     }
@@ -28,6 +29,9 @@ static void UpdateLinkProbeState(void)
     {
         sLinkState = MULTIPLAYER_LINK_OFFLINE;
     }
+
+    if (sLinkProbeStarted && sLinkState != MULTIPLAYER_LINK_ONLINE)
+        sProbeFrames++;
 }
 
 void MultiplayerSession_Init(struct MultiplayerSession *session)
@@ -66,6 +70,7 @@ void MultiplayerSession_StartLinkProbe(void)
         gLinkType = LINKTYPE_BATTLE;
         OpenLink();
         sLinkProbeStarted = TRUE;
+        sProbeFrames = 0;
     }
 
     UpdateLinkProbeState();
@@ -78,6 +83,8 @@ void MultiplayerSession_StopLinkProbe(void)
         CloseLink();
         sLinkProbeStarted = FALSE;
     }
+
+    sProbeFrames = 0;
 
     UpdateLinkProbeState();
 }
