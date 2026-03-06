@@ -654,6 +654,10 @@ static void ToggleTitleLinkProbe(void)
         DisableTitleLinkProbe();
     else
     {
+        // Transport probe only: keep this at the raw link layer so the title
+        // screen can verify emulator connectivity without starting a
+        // multiplayer session. Do not call MpSession_StartConnecting(...) or
+        // MpSession_EnableOverworldTicks() from title-screen probe paths.
         OpenLink();
         sTitleLinkProbeEnabled = TRUE;
     }
@@ -678,6 +682,10 @@ static enum TitleLinkStatus GetTitleLinkStatusTelemetry(void)
     u8 playerCount = GetLinkPlayerCount();
     bool8 isEstablished = IsLinkConnectionEstablished();
     bool8 hasActiveLinkContext;
+
+    // This telemetry is intentionally transport-only. It reflects whether the
+    // emulator link cable path is usable; session ownership/lifecycle remains
+    // in overworld + link transition flows.
 
     if (HasLinkErrorOccurred() || IsTitleLinkStatusIncompatible(playerCount, isEstablished))
         return TITLE_LINK_STATUS_ERR;
