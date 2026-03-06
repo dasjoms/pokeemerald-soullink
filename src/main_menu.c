@@ -174,7 +174,7 @@
 
 static EWRAM_DATA bool8 sStartedPokeBallTask = 0;
 static EWRAM_DATA u16 sCurrItemAndOptionMenuCheck = 0;
-static EWRAM_DATA s8 sMainMenuLastMultiplayerStatus = -1;
+static EWRAM_DATA s8 sMainMenuLastMultiplayerStatus = 0;
 static EWRAM_DATA u8 sMainMenuMultiplayerPollTimer = 0;
 
 static u8 sBirchSpeechMainTaskId;
