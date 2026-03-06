@@ -66,10 +66,13 @@ static const struct WindowTemplate sLinkStatusWindowTemplate =
 static EWRAM_DATA u8 sLinkStatusWindowId = WINDOW_NONE;
 static EWRAM_DATA u8 sLinkStatusRefreshTimer = 0;
 static EWRAM_DATA u8 sLinkStatusLastStatus = 0xFF;
+static EWRAM_DATA bool8 sTitleLinkProbeEnabled = FALSE;
 
 static const u8 sText_LinkStatusOff[] = _("LINK: OFF");
 static const u8 sText_LinkStatusWait[] = _("LINK: WAIT");
 static const u8 sText_LinkStatusOn[] = _("LINK: ON");
+static const u8 sText_LinkProbeOff[] = _("PROBE: OFF");
+static const u8 sText_LinkProbeOn[] = _("PROBE: ON");
 
 enum TitleLinkStatus
 {
@@ -81,8 +84,11 @@ enum TitleLinkStatus
 static void InitTitleLinkStatusWindow(void);
 static void UpdateTitleLinkStatus(void);
 static void RemoveTitleLinkStatusWindow(void);
+static void ToggleTitleLinkProbe(void);
+static void DisableTitleLinkProbe(void);
 static enum TitleLinkStatus GetTitleLinkStatusTelemetry(void);
 static const u8 *GetTitleLinkStatusText(enum TitleLinkStatus status);
+static const u8 *GetTitleLinkProbeText(void);
 #endif
 
 static void MainCB2(void);
@@ -632,7 +638,33 @@ static void UpdateTitleLinkStatus(void)
 
     FillWindowPixelBuffer(sLinkStatusWindowId, PIXEL_FILL(1));
     AddTextPrinterParameterized(sLinkStatusWindowId, FONT_SMALL, text, 0, 0, TEXT_SKIP_DRAW, NULL);
+    AddTextPrinterParameterized(sLinkStatusWindowId, FONT_SMALL, GetTitleLinkProbeText(), 0, 9, TEXT_SKIP_DRAW, NULL);
     CopyWindowToVram(sLinkStatusWindowId, COPYWIN_GFX);
+}
+
+static void ToggleTitleLinkProbe(void)
+{
+    if (sTitleLinkProbeEnabled)
+        DisableTitleLinkProbe();
+    else
+    {
+        OpenLink();
+        sTitleLinkProbeEnabled = TRUE;
+    }
+
+    sLinkStatusRefreshTimer = LINK_STATUS_REFRESH_FRAMES;
+    sLinkStatusLastStatus = 0xFF;
+}
+
+static void DisableTitleLinkProbe(void)
+{
+    if (!sTitleLinkProbeEnabled)
+        return;
+
+    CloseLink();
+    sTitleLinkProbeEnabled = FALSE;
+    sLinkStatusRefreshTimer = LINK_STATUS_REFRESH_FRAMES;
+    sLinkStatusLastStatus = 0xFF;
 }
 
 static enum TitleLinkStatus GetTitleLinkStatusTelemetry(void)
@@ -667,6 +699,14 @@ static const u8 *GetTitleLinkStatusText(enum TitleLinkStatus status)
     default:
         return sText_LinkStatusOff;
     }
+}
+
+static const u8 *GetTitleLinkProbeText(void)
+{
+    if (sTitleLinkProbeEnabled)
+        return sText_LinkProbeOn;
+
+    return sText_LinkProbeOff;
 }
 
 static void RemoveTitleLinkStatusWindow(void)
@@ -724,6 +764,7 @@ void CB2_InitTitleScreen(void)
         sLinkStatusWindowId = WINDOW_NONE;
         sLinkStatusRefreshTimer = 0;
         sLinkStatusLastStatus = 0xFF;
+        sTitleLinkProbeEnabled = FALSE;
 #endif
         gMain.state = 1;
         break;
@@ -918,6 +959,13 @@ static void Task_TitleScreenPhase2(u8 taskId)
 // Show Rayquaza silhouette and process main title screen input
 static void Task_TitleScreenPhase3(u8 taskId)
 {
+#if DEBUG_TITLE_LINK_STATUS
+    if (JOY_NEW(SELECT_BUTTON))
+    {
+        ToggleTitleLinkProbe();
+    }
+    else
+#endif
     if (JOY_NEW(A_BUTTON) || JOY_NEW(START_BUTTON))
     {
         FadeOutBGM(4);
@@ -963,6 +1011,7 @@ static void Task_TitleScreenPhase3(u8 taskId)
 static void CB2_GoToMainMenu(void)
 {
 #if DEBUG_TITLE_LINK_STATUS
+    DisableTitleLinkProbe();
     RemoveTitleLinkStatusWindow();
 #endif
     if (!UpdatePaletteFade())
@@ -972,6 +1021,7 @@ static void CB2_GoToMainMenu(void)
 static void CB2_GoToCopyrightScreen(void)
 {
 #if DEBUG_TITLE_LINK_STATUS
+    DisableTitleLinkProbe();
     RemoveTitleLinkStatusWindow();
 #endif
     if (!UpdatePaletteFade())
@@ -981,6 +1031,7 @@ static void CB2_GoToCopyrightScreen(void)
 static void CB2_GoToClearSaveDataScreen(void)
 {
 #if DEBUG_TITLE_LINK_STATUS
+    DisableTitleLinkProbe();
     RemoveTitleLinkStatusWindow();
 #endif
     if (!UpdatePaletteFade())
@@ -990,6 +1041,7 @@ static void CB2_GoToClearSaveDataScreen(void)
 static void CB2_GoToResetRtcScreen(void)
 {
 #if DEBUG_TITLE_LINK_STATUS
+    DisableTitleLinkProbe();
     RemoveTitleLinkStatusWindow();
 #endif
     if (!UpdatePaletteFade())
@@ -999,6 +1051,7 @@ static void CB2_GoToResetRtcScreen(void)
 static void CB2_GoToBerryFixScreen(void)
 {
 #if DEBUG_TITLE_LINK_STATUS
+    DisableTitleLinkProbe();
     RemoveTitleLinkStatusWindow();
 #endif
     if (!UpdatePaletteFade())
