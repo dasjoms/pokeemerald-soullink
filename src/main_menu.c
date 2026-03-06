@@ -16,6 +16,7 @@
 #include "main_menu.h"
 #include "menu.h"
 #include "list_menu.h"
+#include "multiplayer/session.h"
 #include "mystery_event_menu.h"
 #include "naming_screen.h"
 #include "oak_speech.h"
@@ -174,8 +175,9 @@
 
 static EWRAM_DATA bool8 sStartedPokeBallTask = 0;
 static EWRAM_DATA u16 sCurrItemAndOptionMenuCheck = 0;
-static EWRAM_DATA s8 sMainMenuLastMultiplayerStatus = -1;
-static EWRAM_DATA u8 sMainMenuMultiplayerPollTimer = 0;
+static EWRAM_DATA u8 sMainMenuLastLinkState = 0;
+static EWRAM_DATA u8 sMainMenuLastLinkPlayerCount = 0;
+static EWRAM_DATA u8 sMainMenuLinkRefreshCounter = 0;
 
 static u8 sBirchSpeechMainTaskId;
 
@@ -247,11 +249,7 @@ static void MainMenu_FormatSavegamePlayer(void);
 static void MainMenu_FormatSavegamePokedex(void);
 static void MainMenu_FormatSavegameTime(void);
 static void MainMenu_FormatSavegameBadges(void);
-static void MainMenu_FormatMultiplayerStatusText(u8 windowId, u8 x, u8 y, u8 rightAlignX);
-static s8 MainMenu_GetMultiplayerStatusForDisplay(void);
-static u8 MainMenu_GetMultiplayerStatusWindowId(u8 menuType);
-static void MainMenu_TryUpdateMultiplayerStatus(u8 taskId, bool8 forceUpdate);
-static void MainMenu_ResetMultiplayerStatusUiState(void);
+static void MainMenu_UpdateLinkStatusText(u8 menuType, bool8 forceUpdate);
 
 // .rodata
 
@@ -283,10 +281,12 @@ static const u8 gText_ContinueMenuPlayer[] = _("PLAYER");
 static const u8 gText_ContinueMenuTime[] = _("TIME");
 static const u8 gText_ContinueMenuPokedex[] = _("POKéDEX");
 static const u8 gText_ContinueMenuBadges[] = _("BADGES");
-static const u8 gText_ContinueMenuMultiplayer[] = _("LINK");
-static const u8 gText_ContinueMenuMultiplayerOffline[] = _("OFFLINE");
-static const u8 gText_ContinueMenuMultiplayerConnecting[] = _("CONNECTING");
-static const u8 gText_ContinueMenuMultiplayerOnline[] = _("ONLINE");
+static const u8 gText_ContinueMenuLink[] = _("LINK");
+static const u8 gText_MainMenuLinkOffline[] = _("OFFLINE");
+static const u8 gText_MainMenuLinkConnecting[] = _("CONNECTING");
+static const u8 gText_MainMenuLinkError[] = _("ERROR");
+static const u8 gText_MainMenuLinkOnline[] = _("ONLINE");
+static const u8 gText_MainMenuLinkPlayerSuffix[] = _("P");
 
 #define MENU_LEFT 2
 #define MENU_TOP_WIN0 1
@@ -908,8 +908,12 @@ static void Task_DisplayMainMenu(u8 taskId)
             }
             break;
         }
-        MainMenu_ResetMultiplayerStatusUiState();
-        MainMenu_TryUpdateMultiplayerStatus(taskId, TRUE);
+
+        MultiplayerSession_StartLinkProbe();
+        sMainMenuLastLinkState = 0xFF;
+        sMainMenuLastLinkPlayerCount = 0xFF;
+        sMainMenuLinkRefreshCounter = 0;
+        MainMenu_UpdateLinkStatusText(tMenuType, TRUE);
         gTasks[taskId].func = Task_HighlightSelectedMainMenuItem;
     }
 }
@@ -968,7 +972,15 @@ static bool8 HandleMainMenuInput(u8 taskId)
 
 static void Task_HandleMainMenuInput(u8 taskId)
 {
-    MainMenu_TryUpdateMultiplayerStatus(taskId, FALSE);
+    if (sMainMenuLinkRefreshCounter == 0)
+    {
+        MainMenu_UpdateLinkStatusText(gTasks[taskId].tMenuType, FALSE);
+        sMainMenuLinkRefreshCounter = 10;
+    }
+    else
+    {
+        sMainMenuLinkRefreshCounter--;
+    }
 
     if (HandleMainMenuInput(taskId))
         gTasks[taskId].func = Task_HighlightSelectedMainMenuItem;
@@ -1100,6 +1112,7 @@ static void Task_HandleMainMenuAPressed(u8 taskId)
         {
         case ACTION_NEW_GAME:
         default:
+            MultiplayerSession_StopLinkProbe();
             if (IS_FRLG)
             {
                 DestroyTask(taskId);
@@ -1117,25 +1130,30 @@ static void Task_HandleMainMenuAPressed(u8 taskId)
             gTasks[taskId].func = Task_NewGameBirchSpeech_Init;
             break;
         case ACTION_CONTINUE:
+            MultiplayerSession_StopLinkProbe();
             gPlttBufferUnfaded[0] = RGB_BLACK;
             gPlttBufferFaded[0] = RGB_BLACK;
             SetMainCallback2(CB2_ContinueSavedGame);
             DestroyTask(taskId);
             break;
         case ACTION_OPTION:
+            MultiplayerSession_StopLinkProbe();
             gMain.savedCallback = CB2_ReinitMainMenu;
             SetMainCallback2(CB2_InitOptionMenu);
             DestroyTask(taskId);
             break;
         case ACTION_MYSTERY_GIFT:
+            MultiplayerSession_StopLinkProbe();
             SetMainCallback2(CB2_InitMysteryGift);
             DestroyTask(taskId);
             break;
         case ACTION_MYSTERY_EVENTS:
+            MultiplayerSession_StopLinkProbe();
             SetMainCallback2(CB2_InitMysteryEventMenu);
             DestroyTask(taskId);
             break;
         case ACTION_EREADER:
+            MultiplayerSession_StopLinkProbe();
             SetMainCallback2(CB2_InitEReader);
             DestroyTask(taskId);
             break;
@@ -1165,8 +1183,7 @@ static void Task_HandleMainMenuBPressed(u8 taskId)
 {
     if (!gPaletteFade.active)
     {
-        MainMenu_ResetMultiplayerStatusUiState();
-
+        MultiplayerSession_StopLinkProbe();
         if (gTasks[taskId].tMenuType == HAS_MYSTERY_EVENTS)
             RemoveScrollIndicatorArrowPair(gTasks[taskId].tScrollArrowTaskId);
         sCurrItemAndOptionMenuCheck = 0;
@@ -2193,6 +2210,67 @@ static void MainMenu_FormatSavegameText(void)
     MainMenu_FormatSavegamePokedex();
     MainMenu_FormatSavegameTime();
     MainMenu_FormatSavegameBadges();
+}
+
+static void MainMenu_UpdateLinkStatusText(u8 menuType, bool8 forceUpdate)
+{
+    u8 windowId;
+    u8 str[32];
+    const u8 *statusText;
+    enum MultiplayerLinkState state = MultiplayerSession_GetLinkState();
+    u8 playerCount = MultiplayerSession_GetPlayerCount();
+
+    if (!forceUpdate
+     && state == sMainMenuLastLinkState
+     && playerCount == sMainMenuLastLinkPlayerCount)
+        return;
+
+    if (menuType == HAS_NO_SAVED_GAME)
+        windowId = 1;
+    else
+        windowId = 2;
+
+    switch (state)
+    {
+    case MULTIPLAYER_LINK_ERROR:
+        statusText = gText_MainMenuLinkError;
+        break;
+    case MULTIPLAYER_LINK_ONLINE:
+        statusText = gText_MainMenuLinkOnline;
+        break;
+    case MULTIPLAYER_LINK_CONNECTING:
+        statusText = gText_MainMenuLinkConnecting;
+        break;
+    case MULTIPLAYER_LINK_OFFLINE:
+    default:
+        statusText = gText_MainMenuLinkOffline;
+        break;
+    }
+
+    FillWindowPixelRect(windowId, PIXEL_FILL(0xA), 104, 0, 104, 16);
+    AddTextPrinterParameterized3(windowId, FONT_NORMAL, 104, 1, sTextColor_Headers, TEXT_SKIP_DRAW, gText_ContinueMenuLink);
+
+    if (state == MULTIPLAYER_LINK_ONLINE)
+    {
+        ConvertIntToDecimalStringN(str, playerCount, STR_CONV_MODE_LEFT_ALIGN, 1);
+        StringAppend(str, gText_MainMenuLinkPlayerSuffix);
+    }
+    else
+    {
+        StringCopy(str, statusText);
+    }
+
+    AddTextPrinterParameterized3(windowId,
+                                 FONT_NORMAL,
+                                 GetStringRightAlignXOffset(FONT_NORMAL, str, 200),
+                                 1,
+                                 sTextColor_Headers,
+                                 TEXT_SKIP_DRAW,
+                                 str);
+    CopyWindowToVram(windowId, COPYWIN_GFX);
+
+    sMainMenuLastLinkState = state;
+    sMainMenuLastLinkPlayerCount = playerCount;
 }
 
 static void MainMenu_FormatSavegamePlayer(void)
