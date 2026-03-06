@@ -101,5 +101,11 @@ bool8 MultiplayerTransportLink_IsDegraded(void)
 
 bool8 MultiplayerTransportLink_TryRecover(void)
 {
+    if (MpTransport_IsConnected())
+        return TRUE;
+
+    MpTransport_Shutdown();
+    MpTransport_Init();
+
     return MpTransport_IsConnected();
 }
