@@ -3,9 +3,18 @@
 
 #include "multiplayer/types.h"
 
+// Multiplayer session manager policy:
+// - Must not depend on union-room state machine symbols.
+
+enum MpSessionStartIntent
+{
+    MP_SESSION_START_INTENT_NONE = 0,
+    MP_SESSION_START_INTENT_EXPLICIT = (1 << 0),
+};
+
 void MpSession_Init(void);
 void MpSession_Reset(void);
-void MpSession_StartConnecting(void);
+void MpSession_StartConnecting(u8 startIntentFlags);
 void MpSession_TickOverworldPre(void);
 void MpSession_TickOverworldPost(void);
 enum MpSessionState MpSession_GetState(void);

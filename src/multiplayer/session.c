@@ -3,6 +3,7 @@
 #include "multiplayer/session.h"
 #include "multiplayer/queue.h"
 #include "multiplayer/transport.h"
+#include "gba/isagbprint.h"
 
 #define MP_CONNECT_TIMEOUT_FRAMES  (60 * 10)
 #define MP_RECOVERY_TIMEOUT_FRAMES (60 * 5)
@@ -23,6 +24,9 @@ static void MpPeer_MarkSeen(u8 peerId, u16 seq, u32 nowFrame);
 static void MpPeer_MarkDisconnected(u8 peerId);
 static bool8 MpPeer_IsTimedOut(u8 peerId, u32 nowFrame);
 static void MpSession_AdvanceState(void);
+
+// Multiplayer session manager policy:
+// - Must not depend on union-room state machine symbols.
 
 static void MpPeer_ResetAll(void)
 {
@@ -133,8 +137,10 @@ void MpSession_Reset(void)
     MpPeer_ResetAll();
 }
 
-void MpSession_StartConnecting(void)
+void MpSession_StartConnecting(u8 startIntentFlags)
 {
+    AGB_ASSERT(startIntentFlags & MP_SESSION_START_INTENT_EXPLICIT);
+
     MultiplayerSession_Start(&sSession);
     sSessionState = MP_STATE_CONNECTING;
     sStateEnterFrame = gMain.vblankCounter2;
