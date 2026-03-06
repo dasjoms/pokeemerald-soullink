@@ -5,13 +5,20 @@
 
 static u32 sDispatchRejectCount;
 
+static bool8 MpDispatch_HandleHeartbeat(const struct MpMessage *msg)
+{
+    return (msg->header.payloadLen == 0);
+}
+
 static bool8 MpDispatch_HandleUnhandled(const struct MpMessage *msg)
 {
     (void)msg;
     return FALSE;
 }
 
-const MpDispatchHandler gMpDispatchHandlers[MP_DISPATCH_MESSAGE_TYPE_COUNT] = {0};
+const MpDispatchHandler gMpDispatchHandlers[MP_DISPATCH_MESSAGE_TYPE_COUNT] = {
+    [MP_MSG_HEARTBEAT] = MpDispatch_HandleHeartbeat,
+};
 
 void MultiplayerDispatch_Init(void)
 {
@@ -38,6 +45,13 @@ bool8 MpDispatch_HandleInbound(const struct MpMessage *msg)
         return FALSE;
     }
 
+    if (msg->header.protocolVersion != MP_PROTOCOL_VERSION_1)
+    {
+        sDispatchRejectCount++;
+        MpSession_OnPeerMessageRejected(msg->header.senderId);
+        return FALSE;
+    }
+
     if (msg->header.type >= MP_DISPATCH_MESSAGE_TYPE_COUNT)
     {
         sDispatchRejectCount++;
@@ -53,6 +67,13 @@ bool8 MpDispatch_HandleInbound(const struct MpMessage *msg)
     }
 
     if (!MpSession_IsPeerIdValid(msg->header.senderId))
+    {
+        sDispatchRejectCount++;
+        MpSession_OnPeerMessageRejected(msg->header.senderId);
+        return FALSE;
+    }
+
+    if (!MpSession_IsIncomingSeqAcceptable(msg->header.senderId, msg->header.seq))
     {
         sDispatchRejectCount++;
         MpSession_OnPeerMessageRejected(msg->header.senderId);

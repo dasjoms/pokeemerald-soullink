@@ -7,6 +7,16 @@
 #define MP_MAX_PEERS ((MAX_RFU_PLAYERS > MAX_LINK_PLAYERS) ? MAX_RFU_PLAYERS : MAX_LINK_PLAYERS)
 #define MP_MESSAGE_PAYLOAD_MAX 96
 
+enum MpProtocolVersion
+{
+    MP_PROTOCOL_VERSION_1 = 1,
+};
+
+enum MpMessageType
+{
+    MP_MSG_HEARTBEAT,
+};
+
 enum MpSessionState
 {
     MP_STATE_DISCONNECTED,
@@ -40,6 +50,7 @@ struct MpPeerState
 
 struct MpMessageHeader
 {
+    u8 protocolVersion;
     u8 type;
     u8 priority;
     u8 senderId;

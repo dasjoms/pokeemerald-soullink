@@ -8,6 +8,7 @@
 #define MP_CONNECT_TIMEOUT_FRAMES  (60 * 10)
 #define MP_RECOVERY_TIMEOUT_FRAMES (60 * 5)
 #define MP_PEER_TIMEOUT_FRAMES     (60 * 5)
+#define MP_HEARTBEAT_INTERVAL_FRAMES 30
 
 #define MP_PEER_STATUS_DISCONNECTED (1 << 0)
 
@@ -25,6 +26,7 @@ struct MpMetrics
 };
 
 static struct MpMetrics sMetrics;
+static u8 sMessageQueueHead;
 static u8 sMessageQueueTail;
 static u8 sMessageQueueCount;
 static u32 sStateEnterFrame;
@@ -36,6 +38,9 @@ static bool8 MpPeer_IsTimedOut(u8 peerId, u32 nowFrame);
 static void MpSession_AdvanceState(void);
 static void MpSession_SetState(enum MpSessionState newState);
 static u8 MpSession_NormalizePriority(u8 priority);
+static bool8 MpSession_ShouldScheduleHeartbeat(u32 nowFrame);
+static void MpSession_ScheduleHeartbeat(void);
+static void MpSession_DrainSendQueue(void);
 
 // Multiplayer session manager policy:
 // - Must not depend on union-room state machine symbols.
@@ -145,10 +150,45 @@ static u8 MpSession_NormalizePriority(u8 priority)
     return priority;
 }
 
+static bool8 MpSession_ShouldScheduleHeartbeat(u32 nowFrame)
+{
+    return ((nowFrame % MP_HEARTBEAT_INTERVAL_FRAMES) == 0);
+}
+
+static void MpSession_ScheduleHeartbeat(void)
+{
+    struct MpMessage msg;
+
+    CpuFill32(0, &msg, sizeof(msg));
+    msg.header.protocolVersion = MP_PROTOCOL_VERSION_1;
+    msg.header.type = MP_MSG_HEARTBEAT;
+    msg.header.priority = MULTIPLAYER_QUEUE_PRIORITY_LOW;
+    msg.header.senderId = sSession.localPlayerId;
+    msg.header.seq = ++sPeerCache[sSession.localPlayerId].lastSeqSent;
+    msg.header.payloadLen = 0;
+
+    MpSession_EnqueueMessage(&msg);
+}
+
+static void MpSession_DrainSendQueue(void)
+{
+    while (sMessageQueueCount != 0)
+    {
+        struct MpMessage *nextMsg = &sMessageQueue[sMessageQueueHead];
+
+        if (!MultiplayerTransportLink_Send(nextMsg, sizeof(*nextMsg)))
+            break;
+
+        sMessageQueueHead = (sMessageQueueHead + 1) % MULTIPLAYER_QUEUE_CAPACITY;
+        sMessageQueueCount--;
+    }
+}
+
 void MpSession_Init(void)
 {
     CpuFill32(0, &sMetrics, sizeof(sMetrics));
     sSessionState = MP_STATE_DISCONNECTED;
+    sMessageQueueHead = 0;
     sMessageQueueTail = 0;
     sMessageQueueCount = 0;
     sStateEnterFrame = gMain.vblankCounter2;
@@ -162,6 +202,7 @@ void MpSession_Reset(void)
     MultiplayerSession_Stop(&sSession);
     CpuFill32(0, &sMetrics, sizeof(sMetrics));
     sSessionState = MP_STATE_DISCONNECTED;
+    sMessageQueueHead = 0;
     sMessageQueueTail = 0;
     sMessageQueueCount = 0;
     sStateEnterFrame = gMain.vblankCounter2;
@@ -171,6 +212,10 @@ void MpSession_Reset(void)
 void MpSession_StartConnecting(u8 startIntentFlags)
 {
     AGB_ASSERT(startIntentFlags & MP_SESSION_START_INTENT_EXPLICIT);
+
+    sMessageQueueHead = 0;
+    sMessageQueueTail = 0;
+    sMessageQueueCount = 0;
 
     MultiplayerSession_Start(&sSession);
     MpSession_SetState(MP_STATE_CONNECTING);
@@ -184,6 +229,11 @@ void MpSession_TickOverworldPre(void)
 
     MultiplayerSession_Tick(&sSession);
     MpSession_AdvanceState();
+
+    if (sSessionState == MP_STATE_ACTIVE && MpSession_ShouldScheduleHeartbeat(gMain.vblankCounter2))
+        MpSession_ScheduleHeartbeat();
+
+    MpSession_DrainSendQueue();
 
     if (sSessionState != MP_STATE_DISCONNECTED)
         MpPeer_MarkSeen(sSession.localPlayerId, sPeerCache[sSession.localPlayerId].lastSeqRecv, gMain.vblankCounter2);
@@ -239,6 +289,20 @@ bool8 MpSession_EnqueueMessage(const struct MpMessage *msg)
 bool8 MpSession_IsPeerIdValid(u8 peerId)
 {
     return (peerId < MP_MAX_PEERS);
+}
+
+bool8 MpSession_IsIncomingSeqAcceptable(u8 peerId, u16 seq)
+{
+    s16 delta;
+
+    if (!MpSession_IsPeerIdValid(peerId))
+        return FALSE;
+
+    if (!sPeerCache[peerId].active)
+        return TRUE;
+
+    delta = (s16)(seq - sPeerCache[peerId].lastSeqRecv);
+    return (delta > 0);
 }
 
 void MpSession_OnPeerMessageAccepted(u8 peerId, u16 seq)
@@ -314,6 +378,8 @@ void MultiplayerSession_Init(struct MultiplayerSession *session)
 void MultiplayerSession_Start(struct MultiplayerSession *session)
 {
     session->active = TRUE;
+    session->localPlayerId = MpTransport_GetLocalPlayerId();
+    session->playerCount = GetLinkPlayerCount();
 }
 
 void MultiplayerSession_Stop(struct MultiplayerSession *session)
@@ -325,6 +391,9 @@ void MultiplayerSession_Tick(struct MultiplayerSession *session)
 {
     if (!session->active)
         return;
+
+    session->localPlayerId = MpTransport_GetLocalPlayerId();
+    session->playerCount = GetLinkPlayerCount();
 
     MultiplayerDispatch_Tick(session);
 }
