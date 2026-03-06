@@ -1035,6 +1035,22 @@ u8 GetBlockReceivedStatus(void)
     return (gBlockReceivedStatus[3] << 3) | (gBlockReceivedStatus[2] << 2) | (gBlockReceivedStatus[1] << 1) | (gBlockReceivedStatus[0] << 0);
 }
 
+u16 GetBlockReceivedSize(u8 who)
+{
+    if (gWirelessCommType == TRUE)
+    {
+        if (gRfu.blockReceived[who] == TRUE)
+            return gRfu.recvBlock[who].count * 12;
+
+        return 0;
+    }
+
+    if (!gBlockReceivedStatus[who])
+        return 0;
+
+    return sBlockRecv[who].size;
+}
+
 static void SetBlockReceivedFlag(u8 who)
 {
     if (gWirelessCommType == TRUE)
