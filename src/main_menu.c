@@ -176,6 +176,7 @@ static EWRAM_DATA bool8 sStartedPokeBallTask = 0;
 static EWRAM_DATA u16 sCurrItemAndOptionMenuCheck = 0;
 static EWRAM_DATA s8 sMainMenuLastMultiplayerStatus = 0;
 static EWRAM_DATA u8 sMainMenuMultiplayerPollTimer = 0;
+static EWRAM_DATA bool8 sMainMenuTransportActive = FALSE;
 
 static u8 sBirchSpeechMainTaskId;
 
@@ -252,6 +253,8 @@ static s8 MainMenu_GetMultiplayerStatusForDisplay(void);
 static u8 MainMenu_GetMultiplayerStatusWindowId(u8 menuType);
 static void MainMenu_TryUpdateMultiplayerStatus(u8 taskId, bool8 forceUpdate);
 static void MainMenu_ResetMultiplayerStatusUiState(void);
+static void MainMenu_InitTransport(void);
+static void MainMenu_ShutdownTransport(void);
 
 // .rodata
 
@@ -641,6 +644,7 @@ static u32 InitMainMenu(bool8 returningFromOptionsMenu)
     ShowBg(0);
     HideBg(1);
     MainMenu_ResetMultiplayerStatusUiState();
+    MainMenu_InitTransport();
     CreateTask(Task_MainMenuCheckSaveFile, 0);
 
     return 0;
@@ -1100,6 +1104,7 @@ static void Task_HandleMainMenuAPressed(u8 taskId)
         {
         case ACTION_NEW_GAME:
         default:
+            MainMenu_ShutdownTransport();
             if (IS_FRLG)
             {
                 DestroyTask(taskId);
@@ -1117,25 +1122,30 @@ static void Task_HandleMainMenuAPressed(u8 taskId)
             gTasks[taskId].func = Task_NewGameBirchSpeech_Init;
             break;
         case ACTION_CONTINUE:
+            MainMenu_ShutdownTransport();
             gPlttBufferUnfaded[0] = RGB_BLACK;
             gPlttBufferFaded[0] = RGB_BLACK;
             SetMainCallback2(CB2_ContinueSavedGame);
             DestroyTask(taskId);
             break;
         case ACTION_OPTION:
+            MainMenu_ShutdownTransport();
             gMain.savedCallback = CB2_ReinitMainMenu;
             SetMainCallback2(CB2_InitOptionMenu);
             DestroyTask(taskId);
             break;
         case ACTION_MYSTERY_GIFT:
+            MainMenu_ShutdownTransport();
             SetMainCallback2(CB2_InitMysteryGift);
             DestroyTask(taskId);
             break;
         case ACTION_MYSTERY_EVENTS:
+            MainMenu_ShutdownTransport();
             SetMainCallback2(CB2_InitMysteryEventMenu);
             DestroyTask(taskId);
             break;
         case ACTION_EREADER:
+            MainMenu_ShutdownTransport();
             SetMainCallback2(CB2_InitEReader);
             DestroyTask(taskId);
             break;
@@ -1165,6 +1175,7 @@ static void Task_HandleMainMenuBPressed(u8 taskId)
 {
     if (!gPaletteFade.active)
     {
+        MainMenu_ShutdownTransport();
         MainMenu_ResetMultiplayerStatusUiState();
 
         if (gTasks[taskId].tMenuType == HAS_MYSTERY_EVENTS)
@@ -2358,6 +2369,24 @@ static void MainMenu_ResetMultiplayerStatusUiState(void)
 {
     sMainMenuLastMultiplayerStatus = -1;
     sMainMenuMultiplayerPollTimer = 0;
+}
+
+static void MainMenu_InitTransport(void)
+{
+    if (!sMainMenuTransportActive)
+    {
+        MpTransport_Init();
+        sMainMenuTransportActive = TRUE;
+    }
+}
+
+static void MainMenu_ShutdownTransport(void)
+{
+    if (sMainMenuTransportActive)
+    {
+        MpTransport_Shutdown();
+        sMainMenuTransportActive = FALSE;
+    }
 }
 
 static void LoadMainMenuWindowFrameTiles(u8 bgId, u16 tileOffset)
