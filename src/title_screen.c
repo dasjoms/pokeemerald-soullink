@@ -12,6 +12,7 @@
 #include "main_menu.h"
 #include "window.h"
 #include "link.h"
+#include "string_util.h"
 #include "palette.h"
 #include "reset_rtc_screen.h"
 #include "berry_fix_program.h"
@@ -71,14 +72,17 @@ static EWRAM_DATA bool8 sTitleLinkProbeEnabled = FALSE;
 static const u8 sText_LinkStatusOff[] = _("LINK: OFF");
 static const u8 sText_LinkStatusWait[] = _("LINK: WAIT");
 static const u8 sText_LinkStatusOn[] = _("LINK: ON");
+static const u8 sText_LinkStatusErr[] = _("LINK: ERR");
 static const u8 sText_LinkProbeOff[] = _("PROBE: OFF");
 static const u8 sText_LinkProbeOn[] = _("PROBE: ON");
+static EWRAM_DATA u8 sLinkStatusTextBuffer[sizeof("LINK: ERR 00")] = _("LINK: ERR");
 
 enum TitleLinkStatus
 {
     TITLE_LINK_STATUS_OFF,
     TITLE_LINK_STATUS_WAIT,
     TITLE_LINK_STATUS_ON,
+    TITLE_LINK_STATUS_ERR,
 };
 
 static void InitTitleLinkStatusWindow(void);
@@ -89,6 +93,8 @@ static void DisableTitleLinkProbe(void);
 static enum TitleLinkStatus GetTitleLinkStatusTelemetry(void);
 static const u8 *GetTitleLinkStatusText(enum TitleLinkStatus status);
 static const u8 *GetTitleLinkProbeText(void);
+static bool8 IsTitleLinkStatusIncompatible(u8 playerCount, bool8 isEstablished);
+static u8 GetTitleLinkErrorCode(void);
 #endif
 
 static void MainCB2(void);
@@ -671,11 +677,10 @@ static enum TitleLinkStatus GetTitleLinkStatusTelemetry(void)
 {
     u8 playerCount = GetLinkPlayerCount();
     bool8 isEstablished = IsLinkConnectionEstablished();
-    bool8 hasError = HasLinkErrorOccurred();
     bool8 hasActiveLinkContext;
 
-    if (hasError)
-        return TITLE_LINK_STATUS_OFF;
+    if (HasLinkErrorOccurred() || IsTitleLinkStatusIncompatible(playerCount, isEstablished))
+        return TITLE_LINK_STATUS_ERR;
 
     hasActiveLinkContext = (gReceivedRemoteLinkPlayers || gWirelessCommType != 0 || isEstablished || playerCount > 1);
     if (!hasActiveLinkContext)
@@ -689,8 +694,16 @@ static enum TitleLinkStatus GetTitleLinkStatusTelemetry(void)
 
 static const u8 *GetTitleLinkStatusText(enum TitleLinkStatus status)
 {
+    u8 *dst;
+
     switch (status)
     {
+    case TITLE_LINK_STATUS_ERR:
+        StringCopy(sLinkStatusTextBuffer, sText_LinkStatusErr);
+        dst = sLinkStatusTextBuffer + StringLength(sLinkStatusTextBuffer);
+        *dst++ = CHAR_SPACE;
+        ConvertIntToHexStringN(dst, GetTitleLinkErrorCode(), STR_CONV_MODE_LEADING_ZEROS, 2);
+        return sLinkStatusTextBuffer;
     case TITLE_LINK_STATUS_ON:
         return sText_LinkStatusOn;
     case TITLE_LINK_STATUS_WAIT:
@@ -699,6 +712,27 @@ static const u8 *GetTitleLinkStatusText(enum TitleLinkStatus status)
     default:
         return sText_LinkStatusOff;
     }
+}
+
+static bool8 IsTitleLinkStatusIncompatible(u8 playerCount, bool8 isEstablished)
+{
+    if (EXTRACT_LINK_ERRORS(gLinkStatus) != 0)
+        return TRUE;
+
+    if (isEstablished && playerCount <= 1)
+        return TRUE;
+
+    return FALSE;
+}
+
+static u8 GetTitleLinkErrorCode(void)
+{
+    u8 transportErrorCode = EXTRACT_LINK_ERRORS(gLinkStatus);
+
+    if (transportErrorCode != 0)
+        return transportErrorCode;
+
+    return (EXTRACT_CONN_ESTABLISHED(gLinkStatus) << 3) | EXTRACT_PLAYER_COUNT(gLinkStatus);
 }
 
 static const u8 *GetTitleLinkProbeText(void)
