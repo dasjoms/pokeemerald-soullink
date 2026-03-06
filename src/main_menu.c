@@ -40,6 +40,7 @@
 #include "window.h"
 #include "mystery_gift_menu.h"
 #include "multiplayer/session.h"
+#include "multiplayer/transport.h"
 
 /*
  * Main menu state machine
@@ -173,6 +174,8 @@
 
 static EWRAM_DATA bool8 sStartedPokeBallTask = 0;
 static EWRAM_DATA u16 sCurrItemAndOptionMenuCheck = 0;
+static EWRAM_DATA s8 sMainMenuLastMultiplayerStatus = -1;
+static EWRAM_DATA u8 sMainMenuMultiplayerPollTimer = 0;
 
 static u8 sBirchSpeechMainTaskId;
 
@@ -245,6 +248,10 @@ static void MainMenu_FormatSavegamePokedex(void);
 static void MainMenu_FormatSavegameTime(void);
 static void MainMenu_FormatSavegameBadges(void);
 static void MainMenu_FormatMultiplayerStatusText(u8 windowId, u8 x, u8 y, u8 rightAlignX);
+static s8 MainMenu_GetMultiplayerStatusForDisplay(void);
+static u8 MainMenu_GetMultiplayerStatusWindowId(u8 menuType);
+static void MainMenu_TryUpdateMultiplayerStatus(u8 taskId, bool8 forceUpdate);
+static void MainMenu_ResetMultiplayerStatusUiState(void);
 
 // .rodata
 
@@ -633,6 +640,7 @@ static u32 InitMainMenu(bool8 returningFromOptionsMenu)
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON | DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP);
     ShowBg(0);
     HideBg(1);
+    MainMenu_ResetMultiplayerStatusUiState();
     CreateTask(Task_MainMenuCheckSaveFile, 0);
 
     return 0;
@@ -900,6 +908,8 @@ static void Task_DisplayMainMenu(u8 taskId)
             }
             break;
         }
+        MainMenu_ResetMultiplayerStatusUiState();
+        MainMenu_TryUpdateMultiplayerStatus(taskId, TRUE);
         gTasks[taskId].func = Task_HighlightSelectedMainMenuItem;
     }
 }
@@ -958,6 +968,8 @@ static bool8 HandleMainMenuInput(u8 taskId)
 
 static void Task_HandleMainMenuInput(u8 taskId)
 {
+    MainMenu_TryUpdateMultiplayerStatus(taskId, FALSE);
+
     if (HandleMainMenuInput(taskId))
         gTasks[taskId].func = Task_HighlightSelectedMainMenuItem;
 }
@@ -969,6 +981,8 @@ static void Task_HandleMainMenuAPressed(u8 taskId)
 
     if (!gPaletteFade.active)
     {
+        MainMenu_ResetMultiplayerStatusUiState();
+
         if (gTasks[taskId].tMenuType == HAS_MYSTERY_EVENTS)
             RemoveScrollIndicatorArrowPair(gTasks[taskId].tScrollArrowTaskId);
         ClearStdWindowAndFrame(0, TRUE);
@@ -1151,6 +1165,8 @@ static void Task_HandleMainMenuBPressed(u8 taskId)
 {
     if (!gPaletteFade.active)
     {
+        MainMenu_ResetMultiplayerStatusUiState();
+
         if (gTasks[taskId].tMenuType == HAS_MYSTERY_EVENTS)
             RemoveScrollIndicatorArrowPair(gTasks[taskId].tScrollArrowTaskId);
         sCurrItemAndOptionMenuCheck = 0;
@@ -2237,16 +2253,15 @@ static void MainMenu_FormatSavegameBadges(void)
 static void MainMenu_FormatMultiplayerStatusText(u8 windowId, u8 x, u8 y, u8 rightAlignX)
 {
     const u8 *status;
-    struct MpSessionUiSnapshot snapshot;
+    s8 displayStatus = MainMenu_GetMultiplayerStatusForDisplay();
 
     AddTextPrinterParameterized3(windowId, FONT_NORMAL, x, y, sTextColor_MenuInfo, TEXT_SKIP_DRAW, gText_ContinueMenuMultiplayer);
 
-    MpSession_GetUiSnapshot(&snapshot);
-    if (!snapshot.isInitialized || snapshot.state == MP_STATE_DISCONNECTED)
+    if (displayStatus == 0)
     {
         status = gText_ContinueMenuMultiplayerOffline;
     }
-    else if (snapshot.state == MP_STATE_CONNECTING || snapshot.state == MP_STATE_RECOVERING)
+    else if (displayStatus == 1)
     {
         status = gText_ContinueMenuMultiplayerConnecting;
     }
@@ -2256,6 +2271,93 @@ static void MainMenu_FormatMultiplayerStatusText(u8 windowId, u8 x, u8 y, u8 rig
     }
 
     AddTextPrinterParameterized3(windowId, FONT_NORMAL, GetStringRightAlignXOffset(FONT_NORMAL, status, rightAlignX), y, sTextColor_MenuInfo, TEXT_SKIP_DRAW, status);
+}
+
+static s8 MainMenu_GetMultiplayerStatusForDisplay(void)
+{
+    struct MpSessionUiSnapshot sessionSnapshot;
+    struct MpTransportStatus transportStatus;
+
+    MpSession_GetUiSnapshot(&sessionSnapshot);
+    if (sessionSnapshot.isInitialized)
+    {
+        if (sessionSnapshot.state == MP_STATE_DISCONNECTED)
+            return 0;
+
+        if (sessionSnapshot.state == MP_STATE_CONNECTING || sessionSnapshot.state == MP_STATE_RECOVERING)
+            return 1;
+
+        return 2;
+    }
+
+    transportStatus = MpTransport_PollStatus();
+    switch (transportStatus.state)
+    {
+    case MP_TRANSPORT_STATE_ONLINE:
+        return 2;
+    case MP_TRANSPORT_STATE_CONNECTING:
+        return 1;
+    case MP_TRANSPORT_STATE_ERROR:
+    case MP_TRANSPORT_STATE_OFFLINE:
+    default:
+        return 0;
+    }
+}
+
+static u8 MainMenu_GetMultiplayerStatusWindowId(u8 menuType)
+{
+    switch (menuType)
+    {
+    case HAS_NO_SAVED_GAME:
+    default:
+        return 1;
+    case HAS_SAVED_GAME:
+        return 3;
+    case HAS_MYSTERY_GIFT:
+        return 5;
+    case HAS_MYSTERY_EVENTS:
+        return 6;
+    }
+}
+
+static void MainMenu_TryUpdateMultiplayerStatus(u8 taskId, bool8 forceUpdate)
+{
+    u8 windowId;
+    s8 currentStatus;
+    const u8 *statusText;
+
+    if (!forceUpdate)
+    {
+        sMainMenuMultiplayerPollTimer++;
+        if (sMainMenuMultiplayerPollTimer < 8)
+            return;
+    }
+
+    sMainMenuMultiplayerPollTimer = 0;
+    currentStatus = MainMenu_GetMultiplayerStatusForDisplay();
+    if (!forceUpdate && currentStatus == sMainMenuLastMultiplayerStatus)
+        return;
+
+    windowId = MainMenu_GetMultiplayerStatusWindowId(gTasks[taskId].data[0]);
+    FillWindowPixelRect(windowId, PIXEL_FILL(0xA), 0x80, 1, 0x50, 16);
+    AddTextPrinterParameterized3(windowId, FONT_NORMAL, 0x80, 1, sTextColor_MenuInfo, TEXT_SKIP_DRAW, gText_ContinueMenuMultiplayer);
+
+    if (currentStatus == 0)
+        statusText = gText_ContinueMenuMultiplayerOffline;
+    else if (currentStatus == 1)
+        statusText = gText_ContinueMenuMultiplayerConnecting;
+    else
+        statusText = gText_ContinueMenuMultiplayerOnline;
+
+    AddTextPrinterParameterized3(windowId, FONT_NORMAL, GetStringRightAlignXOffset(FONT_NORMAL, statusText, 0xD0), 1, sTextColor_MenuInfo, TEXT_SKIP_DRAW, statusText);
+    CopyWindowToVram(windowId, COPYWIN_GFX);
+    sMainMenuLastMultiplayerStatus = currentStatus;
+}
+
+static void MainMenu_ResetMultiplayerStatusUiState(void)
+{
+    sMainMenuLastMultiplayerStatus = -1;
+    sMainMenuMultiplayerPollTimer = 0;
 }
 
 static void LoadMainMenuWindowFrameTiles(u8 bgId, u16 tileOffset)
