@@ -245,6 +245,7 @@ static void MainMenu_FormatSavegamePokedex(void);
 static void MainMenu_FormatSavegameTime(void);
 static void MainMenu_FormatSavegameBadges(void);
 static void MainMenu_FormatMultiplayerInfo(void);
+static void MainMenu_FormatMultiplayerInfoWindow(u8 windowId, u8 x, u8 y, u8 rightAlignX);
 
 // .rodata
 
@@ -809,6 +810,7 @@ static void Task_DisplayMainMenu(u8 taskId)
             FillWindowPixelBuffer(1, PIXEL_FILL(0xA));
             AddTextPrinterParameterized3(0, FONT_NORMAL, 0, 1, sTextColor_Headers, TEXT_SKIP_DRAW, gText_MainMenuNewGame);
             AddTextPrinterParameterized3(1, FONT_NORMAL, 0, 1, sTextColor_Headers, TEXT_SKIP_DRAW, gText_MainMenuOption);
+            MainMenu_FormatMultiplayerInfoWindow(1, 0x80, 1, 0xD0);
             PutWindowTilemap(0);
             PutWindowTilemap(1);
             CopyWindowToVram(0, COPYWIN_GFX);
@@ -2232,17 +2234,22 @@ static void MainMenu_FormatSavegameBadges(void)
 
 static void MainMenu_FormatMultiplayerInfo(void)
 {
+    MainMenu_FormatMultiplayerInfoWindow(2, 0, 49, 100);
+}
+
+static void MainMenu_FormatMultiplayerInfoWindow(u8 windowId, u8 x, u8 y, u8 rightAlignX)
+{
     const u8 *status;
 
     StringExpandPlaceholders(gStringVar4, gText_ContinueMenuMultiplayer);
-    AddTextPrinterParameterized3(2, FONT_NORMAL, 0, 49, sTextColor_MenuInfo, TEXT_SKIP_DRAW, gStringVar4);
+    AddTextPrinterParameterized3(windowId, FONT_NORMAL, x, y, sTextColor_MenuInfo, TEXT_SKIP_DRAW, gStringVar4);
 
     if (MpSession_IsActive())
         status = gText_ContinueMenuMultiplayerOn;
     else
         status = gText_ContinueMenuMultiplayerOff;
 
-    AddTextPrinterParameterized3(2, FONT_NORMAL, GetStringRightAlignXOffset(FONT_NORMAL, status, 100), 49, sTextColor_MenuInfo, TEXT_SKIP_DRAW, status);
+    AddTextPrinterParameterized3(windowId, FONT_NORMAL, GetStringRightAlignXOffset(FONT_NORMAL, status, rightAlignX), y, sTextColor_MenuInfo, TEXT_SKIP_DRAW, status);
 }
 
 static void LoadMainMenuWindowFrameTiles(u8 bgId, u16 tileOffset)
