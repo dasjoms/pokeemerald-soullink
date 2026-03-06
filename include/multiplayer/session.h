@@ -32,6 +32,7 @@ enum MpSessionState MpSession_GetState(void);
 bool8 MpSession_IsActive(void);
 bool8 MpSession_EnqueueMessage(const struct MpMessage *msg);
 bool8 MpSession_IsPeerIdValid(u8 peerId);
+bool8 MpSession_IsIncomingSeqAcceptable(u8 peerId, u16 seq);
 void MpSession_OnPeerMessageAccepted(u8 peerId, u16 seq);
 void MpSession_OnPeerMessageRejected(u8 peerId);
 void MpSession_GetMetricsSnapshot(struct MpMetricsSnapshot *snapshot);
