@@ -178,7 +178,6 @@ static EWRAM_DATA u16 sCurrItemAndOptionMenuCheck = 0;
 static EWRAM_DATA s8 sMainMenuLastMultiplayerStatus = 0;
 static EWRAM_DATA u8 sMainMenuMultiplayerPollTimer = 0;
 static EWRAM_DATA bool8 sMainMenuTransportActive = FALSE;
-static EWRAM_DATA u16 sMainMenuDebugOverlayTickCounter = 0;
 
 static u8 sBirchSpeechMainTaskId;
 
@@ -299,7 +298,6 @@ static const u8 gText_MainMenuDebugPlayerCount[] = _(" PC:");
 static const u8 gText_MainMenuDebugLinkError[] = _("LE:");
 static const u8 gText_MainMenuDebugWirelessCommType[] = _(" WC:");
 static const u8 gText_MainMenuDebugTransportState[] = _(" TS:");
-static const u8 gText_MainMenuDebugTickCounter[] = _(" TC:");
 
 #define MENU_LEFT 2
 #define MENU_TOP_WIN0 1
@@ -2356,7 +2354,6 @@ static void MainMenu_TryUpdateMultiplayerStatus(u8 taskId, bool8 forceUpdate)
     }
 
     sMainMenuMultiplayerPollTimer = 0;
-    sMainMenuDebugOverlayTickCounter++;
     currentStatus = MainMenu_GetMultiplayerStatusForDisplay();
     shouldUpdateStatusText = forceUpdate || currentStatus != sMainMenuLastMultiplayerStatus;
 
@@ -2407,8 +2404,6 @@ static void MainMenu_DrawLinkDebugOverlay(u8 menuType)
     ptr = ConvertIntToDecimalStringN(ptr, gWirelessCommType, STR_CONV_MODE_LEFT_ALIGN, 2);
     ptr = StringCopy(ptr, gText_MainMenuDebugTransportState);
     ptr = ConvertIntToDecimalStringN(ptr, transportStatus.state, STR_CONV_MODE_LEFT_ALIGN, 2);
-    ptr = StringCopy(ptr, gText_MainMenuDebugTickCounter);
-    ptr = ConvertIntToDecimalStringN(ptr, sMainMenuDebugOverlayTickCounter, STR_CONV_MODE_LEADING_ZEROS, 5);
     *ptr = EOS;
 
     if (menuType == HAS_NO_SAVED_GAME)
@@ -2434,7 +2429,6 @@ static void MainMenu_ResetMultiplayerStatusUiState(void)
 {
     sMainMenuLastMultiplayerStatus = -1;
     sMainMenuMultiplayerPollTimer = 0;
-    sMainMenuDebugOverlayTickCounter = 0;
 }
 
 static void MainMenu_InitTransport(void)
