@@ -168,6 +168,9 @@
 
 #define OPTION_MENU_FLAG (1 << 15)
 
+#ifndef DEBUG_MAIN_MENU_LINK_STATUS
+#define DEBUG_MAIN_MENU_LINK_STATUS 0
+#endif
 
 // Static type declarations
 
@@ -256,7 +259,9 @@ static void MainMenu_TryUpdateMultiplayerStatus(u8 taskId, bool8 forceUpdate);
 static void MainMenu_ResetMultiplayerStatusUiState(void);
 static void MainMenu_InitTransport(void);
 static void MainMenu_ShutdownTransport(void);
+#if DEBUG_MAIN_MENU_LINK_STATUS
 static void MainMenu_DrawLinkDebugOverlay(u8 menuType);
+#endif
 
 // .rodata
 
@@ -2367,7 +2372,9 @@ static void MainMenu_TryUpdateMultiplayerStatus(u8 taskId, bool8 forceUpdate)
         AddTextPrinterParameterized3(windowId, FONT_NORMAL, GetStringRightAlignXOffset(FONT_NORMAL, statusText, 0xD0), 1, sTextColor_MenuInfo, TEXT_SKIP_DRAW, statusText);
     }
 
+#if DEBUG_MAIN_MENU_LINK_STATUS
     MainMenu_DrawLinkDebugOverlay(gTasks[taskId].data[0]);
+#endif
 
     if (!shouldUpdateStatusText)
         return;
@@ -2376,6 +2383,7 @@ static void MainMenu_TryUpdateMultiplayerStatus(u8 taskId, bool8 forceUpdate)
     sMainMenuLastMultiplayerStatus = currentStatus;
 }
 
+#if DEBUG_MAIN_MENU_LINK_STATUS
 static void MainMenu_DrawLinkDebugOverlay(u8 menuType)
 {
     struct MpTransportStatus transportStatus;
@@ -2418,6 +2426,7 @@ static void MainMenu_DrawLinkDebugOverlay(u8 menuType)
         CopyWindowToVram(2, COPYWIN_GFX);
     }
 }
+#endif
 
 static void MainMenu_ResetMultiplayerStatusUiState(void)
 {
