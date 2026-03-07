@@ -292,12 +292,6 @@ static const u8 gText_ContinueMenuMultiplayer[] = _("LINK");
 static const u8 gText_ContinueMenuMultiplayerOffline[] = _("OFFLINE");
 static const u8 gText_ContinueMenuMultiplayerConnecting[] = _("CONNECTING");
 static const u8 gText_ContinueMenuMultiplayerOnline[] = _("ONLINE");
-static const u8 gText_MainMenuDebugLinkStatus[] = _("LS:");
-static const u8 gText_MainMenuDebugConnectionEstablished[] = _(" CE:");
-static const u8 gText_MainMenuDebugPlayerCount[] = _(" PC:");
-static const u8 gText_MainMenuDebugLinkError[] = _("LE:");
-static const u8 gText_MainMenuDebugWirelessCommType[] = _(" WC:");
-static const u8 gText_MainMenuDebugTransportState[] = _(" TS:");
 
 #define MENU_LEFT 2
 #define MENU_TOP_WIN0 1
@@ -2390,19 +2384,19 @@ static void MainMenu_DrawLinkDebugOverlay(u8 menuType)
 
     transportStatus = MpTransport_PollStatus();
 
-    ptr = StringCopy(str, gText_MainMenuDebugLinkStatus);
+    ptr = StringCopy(str, _("LS:"));
     ptr = ConvertIntToHexStringN(ptr, gLinkStatus, STR_CONV_MODE_LEADING_ZEROS, 8);
-    ptr = StringCopy(ptr, gText_MainMenuDebugConnectionEstablished);
+    ptr = StringCopy(ptr, _(" CE:"));
     ptr = ConvertIntToDecimalStringN(ptr, IsLinkConnectionEstablished(), STR_CONV_MODE_LEFT_ALIGN, 1);
-    ptr = StringCopy(ptr, gText_MainMenuDebugPlayerCount);
+    ptr = StringCopy(ptr, _(" PC:"));
     ptr = ConvertIntToDecimalStringN(ptr, GetLinkPlayerCount(), STR_CONV_MODE_LEFT_ALIGN, 1);
     *ptr = EOS;
 
-    ptr = StringCopy(str + 32, gText_MainMenuDebugLinkError);
+    ptr = StringCopy(str + 32, _("LE:"));
     ptr = ConvertIntToDecimalStringN(ptr, HasLinkErrorOccurred(), STR_CONV_MODE_LEFT_ALIGN, 1);
-    ptr = StringCopy(ptr, gText_MainMenuDebugWirelessCommType);
+    ptr = StringCopy(ptr, _(" WC:"));
     ptr = ConvertIntToDecimalStringN(ptr, gWirelessCommType, STR_CONV_MODE_LEFT_ALIGN, 2);
-    ptr = StringCopy(ptr, gText_MainMenuDebugTransportState);
+    ptr = StringCopy(ptr, _(" TS:"));
     ptr = ConvertIntToDecimalStringN(ptr, transportStatus.state, STR_CONV_MODE_LEFT_ALIGN, 2);
     *ptr = EOS;
 
