@@ -168,6 +168,10 @@
 
 #define OPTION_MENU_FLAG (1 << 15)
 
+#ifndef DEBUG_MAIN_MENU_LINK_STATUS
+#define DEBUG_MAIN_MENU_LINK_STATUS 0
+#endif
+
 // Static type declarations
 
 // Static RAM declarations
@@ -255,6 +259,9 @@ static void MainMenu_TryUpdateMultiplayerStatus(u8 taskId, bool8 forceUpdate);
 static void MainMenu_ResetMultiplayerStatusUiState(void);
 static void MainMenu_InitTransport(void);
 static void MainMenu_ShutdownTransport(void);
+#if DEBUG_MAIN_MENU_LINK_STATUS
+static void MainMenu_DrawLinkDebugOverlay(u8 windowId);
+#endif
 
 // .rodata
 
@@ -2336,6 +2343,7 @@ static void MainMenu_TryUpdateMultiplayerStatus(u8 taskId, bool8 forceUpdate)
     u8 windowId;
     s8 currentStatus;
     const u8 *statusText;
+    bool8 shouldUpdateStatusText;
 
     if (!forceUpdate)
     {
@@ -2346,24 +2354,68 @@ static void MainMenu_TryUpdateMultiplayerStatus(u8 taskId, bool8 forceUpdate)
 
     sMainMenuMultiplayerPollTimer = 0;
     currentStatus = MainMenu_GetMultiplayerStatusForDisplay();
-    if (!forceUpdate && currentStatus == sMainMenuLastMultiplayerStatus)
-        return;
+    shouldUpdateStatusText = forceUpdate || currentStatus != sMainMenuLastMultiplayerStatus;
 
     windowId = MainMenu_GetMultiplayerStatusWindowId(gTasks[taskId].data[0]);
-    FillWindowPixelRect(windowId, PIXEL_FILL(0xA), 0x80, 1, 0x50, 16);
-    AddTextPrinterParameterized3(windowId, FONT_NORMAL, 0x80, 1, sTextColor_MenuInfo, TEXT_SKIP_DRAW, gText_ContinueMenuMultiplayer);
+    if (shouldUpdateStatusText)
+    {
+        FillWindowPixelRect(windowId, PIXEL_FILL(0xA), 0x80, 1, 0x50, 16);
+        AddTextPrinterParameterized3(windowId, FONT_NORMAL, 0x80, 1, sTextColor_MenuInfo, TEXT_SKIP_DRAW, gText_ContinueMenuMultiplayer);
 
-    if (currentStatus == 0)
-        statusText = gText_ContinueMenuMultiplayerOffline;
-    else if (currentStatus == 1)
-        statusText = gText_ContinueMenuMultiplayerConnecting;
-    else
-        statusText = gText_ContinueMenuMultiplayerOnline;
+        if (currentStatus == 0)
+            statusText = gText_ContinueMenuMultiplayerOffline;
+        else if (currentStatus == 1)
+            statusText = gText_ContinueMenuMultiplayerConnecting;
+        else
+            statusText = gText_ContinueMenuMultiplayerOnline;
 
-    AddTextPrinterParameterized3(windowId, FONT_NORMAL, GetStringRightAlignXOffset(FONT_NORMAL, statusText, 0xD0), 1, sTextColor_MenuInfo, TEXT_SKIP_DRAW, statusText);
+        AddTextPrinterParameterized3(windowId, FONT_NORMAL, GetStringRightAlignXOffset(FONT_NORMAL, statusText, 0xD0), 1, sTextColor_MenuInfo, TEXT_SKIP_DRAW, statusText);
+    }
+
+#if DEBUG_MAIN_MENU_LINK_STATUS
+    if (gTasks[taskId].data[0] != HAS_NO_SAVED_GAME)
+    {
+        MainMenu_DrawLinkDebugOverlay(2);
+        CopyWindowToVram(2, COPYWIN_GFX);
+    }
+#endif
+
+    if (!shouldUpdateStatusText)
+        return;
+
     CopyWindowToVram(windowId, COPYWIN_GFX);
     sMainMenuLastMultiplayerStatus = currentStatus;
 }
+
+#if DEBUG_MAIN_MENU_LINK_STATUS
+static void MainMenu_DrawLinkDebugOverlay(u8 windowId)
+{
+    struct MpTransportStatus transportStatus;
+    u8 str[64];
+    u8 *ptr;
+
+    transportStatus = MpTransport_PollStatus();
+    FillWindowPixelRect(windowId, PIXEL_FILL(0xA), 0, 41, 0xD0, 24);
+
+    ptr = StringCopy(str, _("LS:"));
+    ptr = ConvertIntToHexStringN(ptr, gLinkStatus, STR_CONV_MODE_LEADING_ZEROS, 8);
+    ptr = StringCopy(ptr, _(" CE:"));
+    ptr = ConvertIntToDecimalStringN(ptr, IsLinkConnectionEstablished(), STR_CONV_MODE_LEFT_ALIGN, 1);
+    ptr = StringCopy(ptr, _(" PC:"));
+    ptr = ConvertIntToDecimalStringN(ptr, GetLinkPlayerCount(), STR_CONV_MODE_LEFT_ALIGN, 1);
+    *ptr = EOS;
+    AddTextPrinterParameterized3(windowId, FONT_SMALL, 0, 41, sTextColor_MenuInfo, TEXT_SKIP_DRAW, str);
+
+    ptr = StringCopy(str, _("LE:"));
+    ptr = ConvertIntToDecimalStringN(ptr, HasLinkErrorOccurred(), STR_CONV_MODE_LEFT_ALIGN, 1);
+    ptr = StringCopy(ptr, _(" WC:"));
+    ptr = ConvertIntToDecimalStringN(ptr, gWirelessCommType, STR_CONV_MODE_LEFT_ALIGN, 2);
+    ptr = StringCopy(ptr, _(" TS:"));
+    ptr = ConvertIntToDecimalStringN(ptr, transportStatus.state, STR_CONV_MODE_LEFT_ALIGN, 2);
+    *ptr = EOS;
+    AddTextPrinterParameterized3(windowId, FONT_SMALL, 0, 49, sTextColor_MenuInfo, TEXT_SKIP_DRAW, str);
+}
+#endif
 
 static void MainMenu_ResetMultiplayerStatusUiState(void)
 {
